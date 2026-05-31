@@ -48,7 +48,7 @@ class SearchController extends Controller
         if ($type === 'all' || $type === 'repositories') {
             $results['repositories'] = Repository::with('owner')
                 ->where('visibility', 'public')
-                ->andWhere(function ($q) use ($query) {
+                ->where(function ($q) use ($query) {
                     $q->where('title', 'LIKE', "%{$query}%")
                         ->orWhere('description', 'LIKE', "%{$query}%");
                 })->take(10)->get();

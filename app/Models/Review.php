@@ -9,6 +9,7 @@ class Review extends Model
 {
     protected $fillable = [
         'course_id', 'user_id', 'rating', 'comment',
+        'reviewer_name', 'status',  // ← missing
     ];
 
     public function course(): BelongsTo

@@ -12,8 +12,10 @@ class User extends Authenticatable
     use HasUuids; // لتوليد واستخدام معرفات UUID تلقائياً
 
     protected $fillable = [
-        'id', 'clerk_id', 'name', 'username', 'email',
-        'avatar_url', 'bio', 'role', 'points', 'global_rank', 'password',
+        'id', 'name', 'username', 'email', 'password',
+        'avatar_url', 'bio',
+        'github_url', 'linkedin_url', 'website_url', 'skills',  // ← missing
+        'role', 'banned', 'points', 'global_rank',
     ];
 
     public function courses(): HasMany

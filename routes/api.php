@@ -47,8 +47,6 @@ Route::get('/search', [SearchController::class, 'index']);
 Route::get('/stats/platform', [StatsController::class, 'platform']);
 Route::get('/stats/user/{user}', [StatsController::class, 'userStats']);
 
-
-
 // مسارات محمية (يجب أن يكون المستخدم مسجل الدخول للوصول إليها)
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
