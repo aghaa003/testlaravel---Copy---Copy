@@ -51,4 +51,6 @@ Route::get('/stats/user/{user}', [StatsController::class, 'userStats']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']); // ✅ correct
+    Route::get('/users/profile', [UserController::class, 'profile']);
+    Route::put('/users/profile', [UserController::class, 'updateProfile']);
 });

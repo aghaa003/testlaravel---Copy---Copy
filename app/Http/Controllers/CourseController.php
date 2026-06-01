@@ -77,24 +77,23 @@ class CourseController extends Controller
 
     // 5. إضافة درس جديد لدورة معينة (CreateLessonBody)
     public function storeLesson(Request $request, Course $course)
-    {
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'video_url' => 'nullable|url',
-            'duration' => 'nullable|integer',
-            'order_num' => 'required|integer',
-        ]);
+{
+    $validated = $request->validate([
+        'title'           => 'required|string|max:255',
+        'description'     => 'nullable|string',
+        'video_url'       => 'nullable|string',
+        'pdf_url'         => 'nullable|string',
+        'attachment_url'  => 'nullable|string',
+        'attachment_name' => 'nullable|string|max:255',
+        'duration'        => 'nullable|integer',
+        'order_num'       => 'required|integer',
+    ]);
 
-        // نستخدم العلاقة لإنشاء الدرس وربطه بالدورة تلقائياً
-        $lesson = $course->lessons()->create($validated);
+    $lesson = $course->lessons()->create($validated);
+    $course->increment('total_lessons');
 
-        // تحديث إجمالي الدروس في الدورة
-        $course->increment('total_lessons');
-
-        return response()->json($lesson, 201);
-    }
-
+    return response()->json($lesson, 201);
+}
     // --- التقييمات (Reviews) --- //
 
     // 6. جلب تقييمات الدورة

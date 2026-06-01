@@ -39,12 +39,26 @@ class RepositoryController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
-            'thumbnail_url' => 'nullable|url',
-            'owner_id' => 'required|exists:users,id', // سيتم جلبها لاحقاً من الـ Auth
-            'technologies' => 'required|array', // مصفوفة مثل ["React", "Tailwind"]
+            'owner_id' => 'required|exists:users,id',
+            'technologies' => 'required|array',
             'visibility' => 'in:public,private',
-            'project_url' => 'nullable|url',
+            'project_url' => 'nullable|string',
+            'github_url' => 'nullable|string',
+            'is_draft' => 'boolean',
+            'live_demo_url' => 'nullable|string',
+            'cover_image_url' => 'nullable|string',
+            'code_files_urls' => 'nullable|array',
+            'pdf_files_urls' => 'nullable|array',
+            'source_project' => 'nullable|string|max:255',
         ]);
+
+        // cast arrays to JSON strings for storage
+        if (isset($validated['code_files_urls'])) {
+            $validated['code_files_urls'] = json_encode($validated['code_files_urls']);
+        }
+        if (isset($validated['pdf_files_urls'])) {
+            $validated['pdf_files_urls'] = json_encode($validated['pdf_files_urls']);
+        }
 
         $repository = Repository::create($validated);
         $repository->load('owner');
