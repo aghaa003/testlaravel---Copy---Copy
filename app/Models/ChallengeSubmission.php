@@ -8,7 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ChallengeSubmission extends Model
 {
     protected $fillable = [
-        'user_id', 'challenge_id', 'solution', 'language', 'success', 'points_earned', 'message',
+        'user_id', 'challenge_id', 'solution', 'language',
+        'success', 'points_earned', 'score', 'message',
     ];
 
     public function user(): BelongsTo

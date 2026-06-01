@@ -3,18 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable
 {
-    use HasUuids; // لتوليد واستخدام معرفات UUID تلقائياً
+    use HasUuids;
 
     protected $fillable = [
         'id', 'name', 'username', 'email', 'password',
         'avatar_url', 'bio',
-        'github_url', 'linkedin_url', 'website_url', 'skills',  // ← missing
+        'github_url', 'linkedin_url', 'website_url', 'skills',
         'role', 'banned', 'points', 'global_rank',
     ];
 
@@ -41,10 +40,5 @@ class User extends Authenticatable
     public function submissions(): HasMany
     {
         return $this->hasMany(ChallengeSubmission::class);
-    }
-
-    public function likedRepositories(): BelongsToMany
-    {
-        return $this->belongsToMany(Repository::class, 'repository_likes');
     }
 }
