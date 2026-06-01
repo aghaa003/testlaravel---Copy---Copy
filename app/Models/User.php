@@ -18,6 +18,11 @@ class User extends Authenticatable
         'role', 'banned', 'points', 'global_rank',
     ];
 
+    protected $casts = [
+        'skills' => 'array',
+        'banned' => 'boolean',
+    ];
+
     public function courses(): HasMany
     {
         return $this->hasMany(Course::class, 'creator_id');

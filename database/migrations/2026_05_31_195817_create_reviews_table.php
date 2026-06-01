@@ -10,20 +10,18 @@ return new class extends Migration
     {
         Schema::create('reviews', function (Blueprint $table) {
             $table->id();
-
-            // تعريف الحقلين
-            $table->foreignId('course_id');
+            $table->unsignedBigInteger('course_id');
             $table->char('user_id', 36);
-
             $table->integer('rating');
             $table->text('comment')->nullable();
             $table->string('reviewer_name')->nullable();
             $table->enum('status', ['pending', 'approved', 'rejected'])->default('approved');
             $table->timestamps();
 
-            // قيود المفاتيح الأجنبية (Foreign Key Constraints)
-            $table->foreign('course_id')->references('id')->on('courses')->onDelete('cascade');
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('course_id')
+                ->references('id')->on('courses')->onDelete('cascade');
+            $table->foreign('user_id')
+                ->references('id')->on('users')->onDelete('cascade');
         });
     }
 

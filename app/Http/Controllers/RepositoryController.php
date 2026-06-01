@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Repository;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class RepositoryController extends Controller
 {
@@ -91,34 +90,37 @@ class RepositoryController extends Controller
     public function toggleLike(Request $request, Repository $repository)
     {
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id', // سيتم تعويضه بالـ Auth لاحقاً
+            'user_id' => 'required|exists:users,id',
         ]);
 
         $userId = $validated['user_id'];
 
-        // استخدام Transaction لضمان سلامة البيانات عند التعديل في جدولين
-        $liked = DB::transaction(function () use ($repository, $userId) {
-            // التحقق مما إذا كان المستخدم قد أعجب بالمشروع مسبقاً
-            $likeExists = $repository->likes()->where('user_id', $userId)->exists();
+        $existing = \DB::table('repository_likes')
+            ->where('user_id', $userId)
+            ->where('repository_id', $repository->id)
+            ->first();
 
-            if ($likeExists) {
-                // إلغاء الإعجاب
-                $repository->likes()->detach($userId);
-                $repository->decrement('likes_count');
-
-                return false;
-            } else {
-                // إضافة إعجاب جديد
-                $repository->likes()->attach($userId);
-                $repository->increment('likes_count');
-
-                return true;
-            }
-        });
+        if ($existing) {
+            \DB::table('repository_likes')
+                ->where('user_id', $userId)
+                ->where('repository_id', $repository->id)
+                ->delete();
+            $repository->decrement('likes_count');
+            $liked = false;
+        } else {
+            \DB::table('repository_likes')->insert([
+                'user_id' => $userId,
+                'repository_id' => $repository->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $repository->increment('likes_count');
+            $liked = true;
+        }
 
         return response()->json([
             'liked' => $liked,
-            'likesCount' => $repository->likes_count,
+            'likesCount' => $repository->fresh()->likes_count,
         ]);
     }
 }

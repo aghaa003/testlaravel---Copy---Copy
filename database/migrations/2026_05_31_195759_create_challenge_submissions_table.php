@@ -10,11 +10,8 @@ return new class extends Migration
     {
         Schema::create('challenge_submissions', function (Blueprint $table) {
             $table->id();
-
-            // تعريف الحقلين
             $table->char('user_id', 36);
-            $table->foreignId('challenge_id');
-
+            $table->unsignedBigInteger('challenge_id');
             $table->text('solution');
             $table->string('language');
             $table->boolean('success')->default(false);
@@ -23,9 +20,10 @@ return new class extends Migration
             $table->string('message')->nullable();
             $table->timestamps();
 
-            // قيود المفاتيح الأجنبية (Foreign Key Constraints)
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
-            $table->foreign('challenge_id')->references('id')->on('challenges')->onDelete('cascade');
+            $table->foreign('user_id')
+                ->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('challenge_id')
+                ->references('id')->on('challenges')->onDelete('cascade');
         });
     }
 
