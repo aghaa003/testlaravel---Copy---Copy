@@ -7,6 +7,7 @@ use App\Models\ChallengeSubmission;
 use App\Models\User;
 use App\Services\CodeReviewService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class ChallengeController extends Controller
@@ -38,9 +39,19 @@ class ChallengeController extends Controller
         ]);
     }
 
-    // 2. إنشاء تحدي جديد (من قبل الإدارة)
+    // 2. إنشاء تحدي جديد - يتطلب دور: creator أو employer أو admin
     public function store(Request $request)
     {
+        $user = Auth::user();
+
+        // ✅ التحقق من الصلاحيات - creator يمكنه إنشاء تحديات (لأنها محتوى يمكن معالجته)
+        if (!in_array($user->role, ['creator', 'employer', 'admin'])) {
+            return response()->json([
+                'error' => 'Only creators, employers, and admins can create challenges',
+                'your_role' => $user->role
+            ], 403);
+        }
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -122,5 +133,43 @@ class ChallengeController extends Controller
             'message' => $submission->message,
             'review' => $review,
         ]);
+    }
+
+    // --- معالجة المحتوى (Content Moderation) --- //
+
+    // 5. حذف تحدي (فقط منشئه أو admin) - يتطلب إضافة creator_id في جدول التحديات
+    public function deleteChallenge(Request $request, Challenge $challenge)
+    {
+        $user = Auth::user();
+
+        // ✅ التحقق من الصلاحيات - فقط منشئ التحدي أو admin
+        if (!$challenge->creator_id || ($user->id !== $challenge->creator_id && $user->role !== 'admin')) {
+            return response()->json(['error' => 'You can only delete your own challenges'], 403);
+        }
+
+        $challenge->delete();
+        return response()->json(['message' => 'Challenge deleted successfully']);
+    }
+
+    // 6. تحديث تحدي (فقط منشئه أو admin)
+    public function updateChallenge(Request $request, Challenge $challenge)
+    {
+        $user = Auth::user();
+
+        // ✅ التحقق من الصلاحيات
+        if (!$challenge->creator_id || ($user->id !== $challenge->creator_id && $user->role !== 'admin')) {
+            return response()->json(['error' => 'You can only update your own challenges'], 403);
+        }
+
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'difficulty' => 'nullable|in:easy,medium,hard',
+            'category' => 'nullable|string',
+            'points' => 'nullable|integer|min:0',
+        ]);
+
+        $challenge->update($validated);
+        return response()->json($challenge);
     }
 }

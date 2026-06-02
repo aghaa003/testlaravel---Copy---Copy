@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Course;
+use App\Models\Lesson;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -30,9 +31,19 @@ class CourseController extends Controller
         ]);
     }
 
-    // 2. إنشاء دورة جديدة (CreateCourseBody)
+    // 2. إنشاء دورة جديدة (CreateCourseBody) - يتطلب دور: creator أو employer أو admin
     public function store(Request $request)
     {
+        $user = Auth::user();
+
+        // ✅ التحقق من الصلاحيات - فقط creator و employer و admin يمكنهم إنشاء دورات
+        if (!in_array($user->role, ['creator', 'employer', 'admin'])) {
+            return response()->json([
+                'error' => 'Only creators, employers, and admins can create courses',
+                'your_role' => $user->role
+            ], 403);
+        }
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -75,25 +86,35 @@ class CourseController extends Controller
 
     // --- الدروس (Lessons) --- //
 
-    // 5. إضافة درس جديد لدورة معينة (CreateLessonBody)
+    // 5. إضافة درس جديد لدورة معينة (CreateLessonBody) - يتطلب دور: creator أو employer أو admin
     public function storeLesson(Request $request, Course $course)
-{
-    $validated = $request->validate([
-        'title'           => 'required|string|max:255',
-        'description'     => 'nullable|string',
-        'video_url'       => 'nullable|string',
-        'pdf_url'         => 'nullable|string',
-        'attachment_url'  => 'nullable|string',
-        'attachment_name' => 'nullable|string|max:255',
-        'duration'        => 'nullable|integer',
-        'order_num'       => 'required|integer',
-    ]);
+    {
+        $user = Auth::user();
 
-    $lesson = $course->lessons()->create($validated);
-    $course->increment('total_lessons');
+        // ✅ التحقق من الصلاحيات - فقط creator و employer و admin يمكنهم إضافة دروس
+        if (!in_array($user->role, ['creator', 'employer', 'admin'])) {
+            return response()->json([
+                'error' => 'Only creators, employers, and admins can add lessons',
+                'your_role' => $user->role
+            ], 403);
+        }
 
-    return response()->json($lesson, 201);
-}
+        $validated = $request->validate([
+            'title'           => 'required|string|max:255',
+            'description'     => 'nullable|string',
+            'video_url'       => 'nullable|string',
+            'pdf_url'         => 'nullable|string',
+            'attachment_url'  => 'nullable|string',
+            'attachment_name' => 'nullable|string|max:255',
+            'duration'        => 'nullable|integer',
+            'order_num'       => 'required|integer',
+        ]);
+
+        $lesson = $course->lessons()->create($validated);
+        $course->increment('total_lessons');
+
+        return response()->json($lesson, 201);
+    }
     // --- التقييمات (Reviews) --- //
 
     // 6. جلب تقييمات الدورة
@@ -128,5 +149,59 @@ class CourseController extends Controller
         $review->load('user');
 
         return response()->json($review, 201);
+    }
+
+    // --- معالجة المحتوى (Content Moderation) --- //
+
+    // 8. حذف دورة (فقط منشئها أو admin)
+    public function destroyCourse(Request $request, Course $course)
+    {
+        $user = Auth::user();
+
+        // ✅ التحقق من الصلاحيات - فقط منشئ الدورة أو admin يمكنهم حذفها
+        if ($user->id !== $course->creator_id && $user->role !== 'admin') {
+            return response()->json(['error' => 'You can only delete your own courses'], 403);
+        }
+
+        $course->delete();
+        return response()->json(['message' => 'Course deleted successfully']);
+    }
+
+    // 9. تحديث دورة (فقط منشئها أو admin)
+    public function updateCourse(Request $request, Course $course)
+    {
+        $user = Auth::user();
+
+        // ✅ التحقق من الصلاحيات - فقط منشئ الدورة أو admin يمكنهم تعديلها
+        if ($user->id !== $course->creator_id && $user->role !== 'admin') {
+            return response()->json(['error' => 'You can only update your own courses'], 403);
+        }
+
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'thumbnail_url' => 'nullable|url',
+            'category' => 'nullable|string',
+            'level' => 'nullable|in:beginner,intermediate,advanced',
+        ]);
+
+        $course->update($validated);
+        return response()->json($course);
+    }
+
+    // 10. حذف درس (فقط منشئ الدورة أو admin)
+    public function deleteLesson(Request $request, Lesson $lesson)
+    {
+        $user = Auth::user();
+        $course = $lesson->course;
+
+        // ✅ التحقق من الصلاحيات
+        if ($user->id !== $course->creator_id && $user->role !== 'admin') {
+            return response()->json(['error' => 'You can only delete lessons from your own courses'], 403);
+        }
+
+        $lesson->delete();
+        $course->decrement('total_lessons');
+        return response()->json(['message' => 'Lesson deleted successfully']);
     }
 }

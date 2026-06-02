@@ -33,4 +33,9 @@ class Course extends Model
     {
         return $this->hasMany(Assignment::class)->orderBy('assignment_order');
     }
+
+    public function enrollments(): HasMany
+    {
+        return $this->hasMany(Enrollment::class);
+    }
 }

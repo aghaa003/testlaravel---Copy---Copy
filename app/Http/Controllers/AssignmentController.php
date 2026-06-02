@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\UserAssignment;
 use App\Services\CodeReviewService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class AssignmentController extends Controller
@@ -67,6 +68,16 @@ class AssignmentController extends Controller
 
     public function store(Request $request)
     {
+        $user = Auth::user();
+
+        // ✅ التحقق من الصلاحيات - فقط employer و admin يمكنهم إنشاء تكليفات (ليس creator)
+        if (!in_array($user->role, ['employer', 'admin'])) {
+            return response()->json([
+                'error' => 'Only employers and admins can create assignments',
+                'your_role' => $user->role
+            ], 403);
+        }
+
         $validated = $request->validate([
             'course_id' => 'required|integer|exists:courses,id',
             'title' => 'required|string|max:255',
