@@ -1,8 +1,8 @@
 <?php
 
-use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AiController;
 use App\Http\Controllers\AssignmentController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChallengeController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\RepositoryController;
@@ -40,12 +40,11 @@ Route::post('/repositories/{repository}/like', [RepositoryController::class, 'to
 
 // مسارات التحديات والحلول (Challenges & Submissions)
 Route::apiResource('challenges', ChallengeController::class)->only(['index', 'store', 'show']);
-Route::post('/challenges/{challenge}/submit', [ChallengeController::class, 'submit']);
 
 // مسارات التكليفات ومراجعة الذكاء الاصطناعي (Assignments & AI Review)
 Route::get('/courses-with-assignments', [AssignmentController::class, 'coursesWithAssignments']);
 Route::apiResource('assignments', AssignmentController::class)->only(['index', 'store', 'show']);
-Route::post('/assignments/submit', [AssignmentController::class, 'submit']);
+
 Route::post('/assignments/review', [AssignmentController::class, 'review']);
 
 // مسارات الذكاء الاصطناعي عبر Ollama
@@ -66,4 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']); // ✅ correct
     Route::get('/users/profile', [UserController::class, 'profile']);
     Route::put('/users/profile', [UserController::class, 'updateProfile']);
+    Route::post('/assignments/submit', [AssignmentController::class, 'submit']);
+    Route::post('/challenges/{challenge}/submit', [ChallengeController::class, 'submit']);
+
 });
