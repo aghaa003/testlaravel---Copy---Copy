@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Challenge;
 use App\Models\ChallengeSubmission;
 use App\Models\User;
+use App\Services\CodeReviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -60,29 +61,43 @@ class ChallengeController extends Controller
     }
 
     // 4. تسليم حل التحدي ومعالجته (Submit Challenge)
-    public function submit(Request $request, Challenge $challenge)
+    public function submit(Request $request, Challenge $challenge, CodeReviewService $reviewer)
     {
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
-            'solution' => 'required|string',
-            'language' => 'required|string',
+            'solution' => 'nullable|string|max:100000',
+            'code' => 'nullable|string|max:100000',
+            'language' => 'nullable|string|max:100',
         ]);
 
-        // ملاحظة: هنا نقوم بمحاكاة فحص الكود (Mock Grading)
-        // في مشروعك الأصلي قد ترغب بربطه بـ AI Reviewer أو مصحح برمي تلقائي
-        $isSuccess = true; // سنفترض نجاح الحل تلقائياً للمحاكاة حالياً
+        $solution = $validated['solution'] ?? $validated['code'] ?? '';
+        if (trim($solution) === '') {
+            return response()->json([
+                'success' => false,
+                'pointsEarned' => 0,
+                'score' => 0,
+                'message' => 'يرجى كتابة كود برمجي للحل.',
+            ], 422);
+        }
+
+        $language = $validated['language'] ?? $challenge->category ?? 'General';
+        $review = $reviewer->review($solution, $language, $challenge->description, 'challenge');
+        $isSuccess = ($review['verdict'] ?? 'no') === 'yes' && (int) ($review['score'] ?? 0) >= 60;
         $pointsEarned = $isSuccess ? $challenge->points : 0;
 
-        $submission = DB::transaction(function () use ($challenge, $validated, $isSuccess, $pointsEarned) {
+        $submission = DB::transaction(function () use ($challenge, $validated, $solution, $language, $review, $isSuccess, $pointsEarned) {
             // 1. تسجيل عملية التسليم
             $sub = ChallengeSubmission::create([
                 'user_id' => $validated['user_id'],
                 'challenge_id' => $challenge->id,
-                'solution' => $validated['solution'],
-                'language' => $validated['language'],
+                'solution' => $solution,
+                'language' => $language,
                 'success' => $isSuccess,
                 'points_earned' => $pointsEarned,
-                'message' => $isSuccess ? 'لقد اجتزت التحدي بنجاح!' : 'هناك خطأ في الكود البرمجي.',
+                'score' => (int) ($review['score'] ?? 0),
+                'message' => $isSuccess
+                    ? 'لقد اجتزت التحدي بنجاح!'
+                    : ($review['hint'] ?? $review['summary'] ?? 'هناك خطأ في الكود البرمجي.'),
             ]);
 
             // 2. تحديث إحصائيات التحدي
@@ -103,7 +118,9 @@ class ChallengeController extends Controller
         return response()->json([
             'success' => $submission->success,
             'pointsEarned' => $submission->points_earned,
+            'score' => $submission->score,
             'message' => $submission->message,
+            'review' => $review,
         ]);
     }
 }

@@ -41,4 +41,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(ChallengeSubmission::class);
     }
+
+    public function assignmentSubmissions(): HasMany
+    {
+        return $this->hasMany(UserAssignment::class);
+    }
 }

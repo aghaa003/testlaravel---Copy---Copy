@@ -28,4 +28,9 @@ class Course extends Model
     {
         return $this->hasMany(Review::class);
     }
+
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(Assignment::class)->orderBy('assignment_order');
+    }
 }
