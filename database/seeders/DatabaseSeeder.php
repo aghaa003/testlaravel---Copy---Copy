@@ -6,19 +6,19 @@ use App\Models\Challenge;
 use App\Models\Course;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. استخدام firstOrCreate للمستخدم بناءً على clerk_id
         $admin = User::firstOrCreate(
-            ['clerk_id' => 'user_clerk_test_123'], // شرط التحقق من الوجود
+            ['email' => 'admin123@gmail.com'],
             [
                 'id' => \Illuminate\Support\Str::uuid(),
                 'name' => 'أحمد المبرمج',
                 'username' => 'ahmed_dev',
-                'email' => 'admin123@gmail.com',
+                'password' => Hash::make('admin12345@@'),
                 'avatar_url' => 'https://api.dicebear.com/7.x/avataaars/svg?seed=ahmed',
                 'bio' => 'مطور برمجيات وشغوف بالتعليم المستمر.',
                 'role' => 'admin',
@@ -27,9 +27,8 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 2. استخدام firstOrCreate للدورة بناءً على العنوان
         $course = Course::firstOrCreate(
-            ['title' => 'دورة تطوير الويب المتكاملة باستخدام Laravel'], // شرط التحقق
+            ['title' => 'دورة تطوير الويب المتكاملة باستخدام Laravel'],
             [
                 'description' => 'تعلم بناء تطبيقات ويب حقيقية وقابلة للتوسع من الصفر باستخدام إطار العمل لارافيل.',
                 'thumbnail_url' => 'https://images.unsplash.com/photo-1534665451596-ac99411797f8',
@@ -44,7 +43,6 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // إضافة الدروس فقط إذا كانت الدورة لا تحتوي على دروس حالياً
         if ($course->lessons()->count() === 0) {
             $course->lessons()->createMany([
                 [
@@ -64,14 +62,14 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        // 3. استخدام firstOrCreate للتحدي بناءً على العنوان
         Challenge::firstOrCreate(
-            ['title' => 'عكس السلسلة النصية (Reverse a String)'], // شرط التحقق
+            ['title' => 'عكس السلسلة النصية (Reverse a String)'],
             [
                 'description' => 'اكتب دالة تستقبل نصاً وتُرجعه معكوساً. مثال: "hello" تصبح "olleh".',
                 'difficulty' => 'easy',
                 'category' => 'Algorithms',
                 'points' => 50,
+                'creator_id' => $admin->id,
                 'total_submissions' => 20,
                 'success_rate' => 85.0,
             ]

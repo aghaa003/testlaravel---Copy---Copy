@@ -130,27 +130,23 @@ class LessonController extends Controller
     }
 
     /**
-     * GET/POST /api/lessons/{lesson}/like
+     * GET /api/lessons/{lesson}/like
      */
     public function getLike(Request $request, Lesson $lesson)
     {
-        $user = Auth::user();
+        return response()->json($this->lessonLikePayload($lesson, Auth::user()));
+    }
 
-        $liked = LessonLike::where('user_id', $user->id)
-            ->where('lesson_id', $lesson->id)
-            ->exists();
-
-        $likesCount = $lesson->likes()->count();
-
-        return response()->json([
-            'liked' => $liked,
-            'likesCount' => $likesCount,
-        ]);
+    /**
+     * GET /api/lessons/{lesson}/likes — SPA uses { count, liked }
+     */
+    public function getLikes(Request $request, Lesson $lesson)
+    {
+        return response()->json($this->lessonLikePayload($lesson, Auth::user()));
     }
 
     /**
      * POST /api/lessons/{lesson}/like
-     * Toggle lesson like
      */
     public function toggleLike(Request $request, Lesson $lesson)
     {
@@ -172,10 +168,31 @@ class LessonController extends Controller
             $liked = true;
         }
 
+        $count = $lesson->likes()->count();
+
         return response()->json([
             'liked' => $liked,
-            'likesCount' => $lesson->likes()->count(),
+            'count' => $count,
+            'likesCount' => $count,
         ]);
+    }
+
+    private function lessonLikePayload(Lesson $lesson, $user): array
+    {
+        $liked = false;
+        if ($user) {
+            $liked = LessonLike::where('user_id', $user->id)
+                ->where('lesson_id', $lesson->id)
+                ->exists();
+        }
+
+        $count = $lesson->likes()->count();
+
+        return [
+            'liked' => $liked,
+            'count' => $count,
+            'likesCount' => $count,
+        ];
     }
 
     /**

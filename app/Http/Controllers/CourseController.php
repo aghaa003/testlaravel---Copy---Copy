@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Course;
 use App\Models\Lesson;
+use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -149,6 +150,42 @@ class CourseController extends Controller
         $review->load('user');
 
         return response()->json($review, 201);
+    }
+
+    /**
+     * DELETE /api/courses/{course}/reviews/{review}
+     * Only the course creator may remove a review on their course.
+     */
+    public function destroyReview(Request $request, Course $course, Review $review)
+    {
+        $user = Auth::user();
+
+        if ($review->course_id !== $course->id) {
+            return response()->json(['error' => 'Review does not belong to this course'], 404);
+        }
+
+        if ($user->id !== $course->creator_id) {
+            return response()->json([
+                'error' => 'Only the course creator can delete reviews on this course',
+            ], 403);
+        }
+
+        $review->delete();
+
+        $remaining = $course->reviews()->get();
+        $count = $remaining->count();
+        $average = $count > 0 ? round($remaining->avg('rating'), 2) : 0;
+
+        $course->update([
+            'total_reviews' => $count,
+            'average_rating' => $average,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'totalReviews' => $count,
+            'averageRating' => $average,
+        ]);
     }
 
     // --- معالجة المحتوى (Content Moderation) --- //

@@ -60,7 +60,10 @@ class ChallengeController extends Controller
             'points' => 'required|integer|min:0',
         ]);
 
-        $challenge = Challenge::create($validated);
+        $challenge = Challenge::create([
+            ...$validated,
+            'creator_id' => $user->id,
+        ]);
 
         return response()->json($challenge, 201);
     }
@@ -142,8 +145,7 @@ class ChallengeController extends Controller
     {
         $user = Auth::user();
 
-        // ✅ التحقق من الصلاحيات - فقط منشئ التحدي أو admin
-        if (!$challenge->creator_id || ($user->id !== $challenge->creator_id && $user->role !== 'admin')) {
+        if ($user->role !== 'admin' && $user->id !== $challenge->creator_id) {
             return response()->json(['error' => 'You can only delete your own challenges'], 403);
         }
 
@@ -156,8 +158,7 @@ class ChallengeController extends Controller
     {
         $user = Auth::user();
 
-        // ✅ التحقق من الصلاحيات
-        if (!$challenge->creator_id || ($user->id !== $challenge->creator_id && $user->role !== 'admin')) {
+        if ($user->role !== 'admin' && $user->id !== $challenge->creator_id) {
             return response()->json(['error' => 'You can only update your own challenges'], 403);
         }
 

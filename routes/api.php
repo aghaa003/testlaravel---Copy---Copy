@@ -47,11 +47,17 @@ Route::get('/courses', [CourseController::class, 'index']);
 Route::get('/courses/{course}', [CourseController::class, 'show']);
 Route::get('/courses/{course}/reviews', [CourseController::class, 'reviews']);
 
+// قراءة تعليقات وإعجابات الدروس بدون مصادقة (CourseWatchPage للزوار)
+Route::get('/lessons/{lesson}/comments', [LessonController::class, 'getComments']);
+Route::get('/lessons/{lesson}/likes', [LessonController::class, 'getLikes']);
+Route::get('/lessons/{lesson}/like', [LessonController::class, 'getLike']);
+
 // مسارات كتابة الدورات والدروس والتقييمات - يتطلب المصادقة (creator, employer, admin فقط)
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/courses', [CourseController::class, 'store']); // role: creator|employer|admin
     Route::post('/courses/{course}/lessons', [CourseController::class, 'storeLesson']); // role: creator|employer|admin
     Route::post('/courses/{course}/reviews', [CourseController::class, 'storeReview']); // any authenticated user
+    Route::delete('/courses/{course}/reviews/{review}', [CourseController::class, 'destroyReview']); // course creator only
 
     // ✅ معالجة المحتوى - حذف وتعديل الدورات والدروس (creator يعدل ملكه فقط، admin يعدل الكل)
     Route::delete('/courses/{course}', [CourseController::class, 'destroyCourse']); // creator (own) or admin
@@ -70,20 +76,18 @@ Route::middleware('auth:sanctum')->group(function () {
     // مسارات الدروس والتعليقات والإعجابات (Lessons, Comments & Likes)
     Route::get('/lessons/{lesson}/progress', [LessonController::class, 'getProgress']);
     Route::post('/lessons/{lesson}/progress', [LessonController::class, 'updateProgress']);
-    Route::get('/lessons/{lesson}/comments', [LessonController::class, 'getComments']);
     Route::post('/lessons/{lesson}/comments', [LessonController::class, 'storeComment']);
     Route::delete('/lessons/{lesson}/comments/{comment}', [LessonController::class, 'deleteComment']);
-    Route::get('/lessons/{lesson}/like', [LessonController::class, 'getLike']);
     Route::post('/lessons/{lesson}/like', [LessonController::class, 'toggleLike']);
     Route::get('/courses/{course}/lessons-progress', [LessonController::class, 'getCourseProgress']);
 });
 
 // مسارات المجتمع والمنشورات والتعليقات (Community Posts & Comments)
 Route::get('/community/posts', [CommunityController::class, 'getPosts']);
+Route::get('/community/posts/{post}/comments', [CommunityController::class, 'getComments']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/community/posts', [CommunityController::class, 'storePost']);
     Route::post('/community/posts/{post}/like', [CommunityController::class, 'togglePostLike']);
-    Route::get('/community/posts/{post}/comments', [CommunityController::class, 'getComments']);
     Route::post('/community/posts/{post}/comments', [CommunityController::class, 'storeComment']);
     Route::delete('/community/posts/{post}/comments/{comment}', [CommunityController::class, 'deleteComment']);
 });
@@ -114,6 +118,7 @@ Route::get('/repositories/{repository}', [RepositoryController::class, 'show']);
 // مسارات كتابة المستودعات - يتطلب المصادقة (all users, creators, employers, admins)
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/repositories', [RepositoryController::class, 'store']); // role: user|creator|employer|admin
+    Route::delete('/repositories/{repository}', [RepositoryController::class, 'destroy']);
     Route::post('/repositories/{repository}/like', [RepositoryController::class, 'toggleLike']);
 });
 
@@ -162,8 +167,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::get('/users/profile', [UserController::class, 'profile']);
-    Route::put('/users/profile', [UserController::class, 'updateProfile']);
-    Route::put('/users/{user}', [UserController::class, 'update']);
+    Route::match(['put', 'post'], '/users/profile', [UserController::class, 'updateProfile']);
+    Route::match(['put', 'patch'], '/users/{user}', [UserController::class, 'update']);
+    Route::post('/users/points', [UserController::class, 'addPoints']);
 
     // ✅ مسارات الإخطارات (مكررة من الأعلى - تُترك هنا للتوضيح)
     Route::get('/notifications', [NotificationController::class, 'index']);
@@ -186,8 +192,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/engagements', [AdminController::class, 'getEngagements']);
     Route::get('/admin/courses', [ModerationController::class, 'getCourses']); // admin moderation
     Route::get('/admin/assignments', [ModerationController::class, 'getAssignments']); // admin moderation
-    Route::get('/admin/comments', [AdminController::class, 'getComments']); // admin moderation
-    Route::delete('/admin/comments/{type}/{id}', [AdminController::class, 'deleteComment']); // admin moderation
+    Route::get('/admin/comments', [AdminController::class, 'getComments']);
+    Route::delete('/admin/comments/{id}', [AdminController::class, 'deleteCommentById'])
+        ->whereNumber('id');
+    Route::delete('/admin/comments/{type}/{id}', [AdminController::class, 'deleteComment'])
+        ->where('type', 'lesson|community')
+        ->whereNumber('id');
     Route::get('/admin/reviews', [AdminController::class, 'getReviews']); // admin moderation
     Route::post('/admin/reviews/{review}/approve', [AdminController::class, 'approveReview']); // admin moderation
     Route::post('/admin/reviews/{review}/reject', [AdminController::class, 'rejectReview']); // admin moderation

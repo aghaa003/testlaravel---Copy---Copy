@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Repository;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class RepositoryController extends Controller
 {
@@ -12,13 +13,15 @@ class RepositoryController extends Controller
     {
         $query = Repository::with('owner');
 
-        // تصفية المشاريع الخاصة بمستخدم معين إذا تم تمرير الـ userId
         if ($request->has('userId')) {
             $query->where('owner_id', $request->userId);
+            $viewerId = Auth::id();
+            if ($viewerId !== $request->userId) {
+                $query->where('visibility', 'public');
+            }
+        } else {
+            $query->where('visibility', 'public');
         }
-
-        // إظهار المشاريع العامة فقط بشكل افتراضي
-        $query->where('visibility', 'public');
 
         $limit = $request->input('limit', 10);
         $offset = $request->input('offset', 0);
@@ -122,5 +125,22 @@ class RepositoryController extends Controller
             'liked' => $liked,
             'likesCount' => $repository->fresh()->likes_count,
         ]);
+    }
+
+    /**
+     * DELETE /api/repositories/{repository}
+     * Owner or admin may delete.
+     */
+    public function destroy(Request $request, Repository $repository)
+    {
+        $user = $request->user();
+
+        if ($user->role !== 'admin' && $repository->owner_id !== $user->id) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $repository->delete();
+
+        return response()->json(['success' => true, 'message' => 'Repository deleted']);
     }
 }

@@ -99,13 +99,11 @@ class HomeReviewController extends Controller
             ], 403);
         }
 
-        $validated = $request->validate([
-            'reason' => 'nullable|string|max:500',
-        ]);
+        $reason = $request->input('reason');
 
         $review->update([
             'status' => 'rejected',
-            'rejection_reason' => $validated['reason'] ?? null,
+            'rejection_reason' => is_string($reason) && $reason !== '' ? $reason : null,
         ]);
 
         return response()->json(['message' => 'Review rejected', 'review' => $review]);

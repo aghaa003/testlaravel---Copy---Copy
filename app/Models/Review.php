@@ -8,8 +8,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Review extends Model
 {
     protected $fillable = [
-        'course_id', 'user_id', 'rating', 'comment',
-        'reviewer_name', 'status',  // ← missing
+        'course_id',
+        'user_id',
+        'rating',
+        'comment',
+        'reviewer_name',
+        'status',
+        'rejection_reason',
     ];
 
     public function course(): BelongsTo

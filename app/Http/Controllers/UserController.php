@@ -9,7 +9,6 @@ use Illuminate\Support\Str;
 
 class UserController extends Controller
 {
-    // 1. جلب قائمة المستخدمين
     public function index(Request $request)
     {
         $query = User::query();
@@ -30,7 +29,6 @@ class UserController extends Controller
         ]);
     }
 
-    // 2. إنشاء مستخدم جديد
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -50,7 +48,6 @@ class UserController extends Controller
         return response()->json($user, 201);
     }
 
-    // 3. عرض الملف الشخصي العام لمستخدم معين (PublicProfilePage)
     public function show(User $user)
     {
         $user->loadCount([
@@ -64,9 +61,12 @@ class UserController extends Controller
         return response()->json($user);
     }
 
-    // 4. تحديث بيانات مستخدم معين (Admin use)
     public function update(Request $request, User $user)
     {
+        if ($request->user()->role !== 'admin') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'username' => 'sometimes|string|unique:users,username,'.$user->id,
@@ -76,6 +76,8 @@ class UserController extends Controller
             'linkedin_url' => 'sometimes|nullable|url',
             'website_url' => 'sometimes|nullable|url',
             'skills' => 'sometimes|nullable|array',
+            'role' => 'sometimes|in:user,creator,employer,admin',
+            'banned' => 'sometimes|boolean',
         ]);
 
         $user->update($validated);
@@ -83,7 +85,6 @@ class UserController extends Controller
         return response()->json($user);
     }
 
-    // 5. لوحة الشرف
     public function leaderboard(Request $request)
     {
         $limit = $request->input('limit', 10);
@@ -103,7 +104,6 @@ class UserController extends Controller
         return response()->json($leaderboard);
     }
 
-    // 6. جلب بيانات المستخدم الحالي (ProfilePage - GET /api/users/profile)
     public function profile(Request $request)
     {
         $user = $request->user();
@@ -116,27 +116,113 @@ class UserController extends Controller
             'repositories as totalRepositories',
         ]);
 
-        return response()->json($user);
+        return response()->json($this->formatProfileUser($user));
     }
 
-    // 7. تحديث بيانات المستخدم الحالي (ProfilePage - PUT /api/users/profile)
+    /**
+     * POST /api/users/points — Add points to the authenticated user (e.g. after challenge/activity).
+     */
+    public function addPoints(Request $request)
+    {
+        $validated = $request->validate([
+            'points' => 'required|integer|min:1',
+        ]);
+
+        $user = $request->user();
+        $user->increment('points', $validated['points']);
+
+        return response()->json([
+            'success' => true,
+            'totalPoints' => $user->fresh()->points,
+        ]);
+    }
+
+    /**
+     * PUT or POST /api/users/profile — SPA ProfilePage uses POST with firstName, lastName, avatarUrl, bio.
+     */
     public function updateProfile(Request $request)
     {
         $user = $request->user();
 
-        $validated = $request->validate([
+        $request->validate([
             'name' => 'sometimes|string|max:255',
+            'firstName' => 'sometimes|string|max:255',
+            'lastName' => 'sometimes|string|max:255',
             'username' => 'sometimes|string|unique:users,username,'.$user->id,
             'bio' => 'sometimes|nullable|string',
             'avatar_url' => 'sometimes|nullable|string',
+            'avatarUrl' => 'sometimes|nullable|string',
             'github_url' => 'sometimes|nullable|url',
             'linkedin_url' => 'sometimes|nullable|url',
             'website_url' => 'sometimes|nullable|url',
             'skills' => 'sometimes|nullable|array',
+            'phone' => 'sometimes|nullable|string|max:50',
+            'country' => 'sometimes|nullable|string|max:100',
         ]);
 
-        $user->update($validated);
+        $updates = [];
 
-        return response()->json($user);
+        if ($request->has('firstName') || $request->has('lastName')) {
+            $parts = explode(' ', $user->name, 2);
+            $first = $request->input('firstName', $parts[0] ?? '');
+            $last = $request->input('lastName', $parts[1] ?? '');
+            $updates['name'] = trim($first.' '.$last) ?: $user->name;
+        }
+
+        foreach (['name', 'username', 'bio', 'github_url', 'linkedin_url', 'website_url', 'skills'] as $field) {
+            if ($request->has($field)) {
+                $updates[$field] = $request->input($field);
+            }
+        }
+
+        if ($request->has('avatarUrl')) {
+            $updates['avatar_url'] = $request->input('avatarUrl');
+        } elseif ($request->has('avatar_url')) {
+            $updates['avatar_url'] = $request->input('avatar_url');
+        }
+
+        if ($updates !== []) {
+            $user->update($updates);
+            $user->refresh();
+        }
+
+        $formatted = $this->formatProfileUser($user);
+
+        return response()->json([
+            'success' => true,
+            'user' => $formatted,
+            'profile' => [
+                'bio' => $user->bio,
+                'avatarUrl' => $user->avatar_url ?? '',
+            ],
+        ]);
+    }
+
+    private function formatProfileUser(User $user): array
+    {
+        $nameParts = explode(' ', $user->name, 2);
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'firstName' => $nameParts[0] ?? '',
+            'lastName' => $nameParts[1] ?? '',
+            'fullName' => $user->name,
+            'email' => $user->email,
+            'username' => $user->username,
+            'imageUrl' => $user->avatar_url ?? '',
+            'avatar_url' => $user->avatar_url,
+            'bio' => $user->bio,
+            'github_url' => $user->github_url,
+            'linkedin_url' => $user->linkedin_url,
+            'website_url' => $user->website_url,
+            'skills' => $user->skills ?? [],
+            'role' => $user->role,
+            'points' => $user->points,
+            'global_rank' => $user->global_rank,
+            'solvedChallenges' => $user->solved_challenges_count ?? null,
+            'totalCourses' => $user->total_courses_count ?? null,
+            'totalRepositories' => $user->total_repositories_count ?? null,
+        ];
     }
 }

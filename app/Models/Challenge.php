@@ -8,12 +8,27 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Challenge extends Model
 {
     protected $fillable = [
-        'title', 'description',
-        'input_format', 'output_format', 'examples',     // ← missing
-        'constraints', 'time_limit', 'tags', 'section',  // ← missing
-        'difficulty', 'category', 'points',
-        'total_submissions', 'success_rate',
+        'creator_id',
+        'title',
+        'description',
+        'input_format',
+        'output_format',
+        'examples',
+        'constraints',
+        'time_limit',
+        'tags',
+        'section',
+        'difficulty',
+        'category',
+        'points',
+        'total_submissions',
+        'success_rate',
     ];
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'creator_id');
+    }
 
     public function submissions(): HasMany
     {

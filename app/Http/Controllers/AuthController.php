@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\LoginLogRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -19,6 +20,8 @@ class AuthController extends Controller
             'password' => 'required|string|min:8',
         ]);
 
+        $nameParts = explode(' ', $validated['name'], 2);
+
         $user = User::create([
             'id' => \Illuminate\Support\Str::uuid(),
             'name' => $validated['name'],
@@ -31,7 +34,17 @@ class AuthController extends Controller
 
         Auth::login($user);
 
-        return response()->json($this->formatUser($user), 201);
+        LoginLogRecorder::record(
+            $request,
+            $user->email,
+            'register',
+            $user->id,
+            $nameParts[0] ?? null,
+        );
+
+        return response()->json([
+            'user' => $this->formatUser($user),
+        ], 201);
     }
 
     public function login(Request $request)
@@ -42,6 +55,12 @@ class AuthController extends Controller
         ]);
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+            LoginLogRecorder::record(
+                $request,
+                $credentials['email'],
+                'login_failed',
+            );
+
             throw ValidationException::withMessages([
                 'email' => ['بيانات الاعتماد المدخلة غير صحيحة.'],
             ]);
@@ -49,7 +68,31 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return response()->json($this->formatUser(Auth::user()));
+        $user = Auth::user();
+
+        if ($user->banned) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            throw ValidationException::withMessages([
+                'email' => ['تم حظر هذا الحساب.'],
+            ]);
+        }
+
+        $nameParts = explode(' ', $user->name, 2);
+
+        LoginLogRecorder::record(
+            $request,
+            $user->email,
+            'login',
+            $user->id,
+            $nameParts[0] ?? null,
+        );
+
+        return response()->json([
+            'user' => $this->formatUser($user),
+        ]);
     }
 
     public function logout(Request $request)
@@ -68,7 +111,6 @@ class AuthController extends Controller
         ]);
     }
 
-    // ✅ Single place that shapes the user for the frontend
     private function formatUser(User $user): array
     {
         $nameParts = explode(' ', $user->name, 2);
@@ -93,7 +135,7 @@ class AuthController extends Controller
             'points' => $user->points,
             'global_rank' => $user->global_rank,
             'createdAt' => $user->created_at?->timestamp * 1000,
-            'publicMetadata' => [],
+            'publicMetadata' => ['role' => $user->role],
         ];
     }
 }

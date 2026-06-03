@@ -4,192 +4,218 @@ namespace App\Http\Controllers;
 
 use App\Models\CommunityComment;
 use App\Models\LessonComment;
+use App\Models\LessonLike;
 use App\Models\Review;
 use App\Models\User;
+use App\Support\LoginLogRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
-    /**
-     * Middleware check for admin
-     */
     public function __construct()
     {
         $this->middleware(function ($request, $next) {
-            if (Auth::user()?->role !== 'admin') {
-                return response()->json(['message' => 'غير مصرح'], 403);
+            $user = Auth::user();
+            $employerAllowed = ['getReviews', 'approveReview', 'rejectReview'];
+            $action = $request->route()?->getActionMethod();
+
+            if (in_array($action, $employerAllowed, true)) {
+                if (! in_array($user?->role, ['admin', 'employer'], true)) {
+                    return response()->json(['error' => 'غير مصرح'], 403);
+                }
+            } elseif ($user?->role !== 'admin') {
+                return response()->json(['error' => 'غير مصرح'], 403);
             }
+
             return $next($request);
         });
     }
 
     /**
      * GET /api/admin/logs
-     * Get login logs
      */
     public function getLogs(Request $request)
     {
-        $limit = $request->input('limit', 20);
-        $offset = $request->input('offset', 0);
+        $limit = min((int) $request->input('limit', 100), 500);
+        $offset = (int) $request->input('offset', 0);
 
-        $logs = DB::table('login_logs')
-            ->orderBy('created_at', 'desc')
-            ->skip($offset)
-            ->take($limit)
-            ->get();
-
-        $total = DB::table('login_logs')->count();
+        $query = DB::table('login_logs')->orderByDesc('created_at');
+        $total = $query->count();
+        $logs = $query->skip($offset)->take($limit)->get();
 
         return response()->json([
-            'logs' => $logs,
+            'logs' => $logs->map(fn ($log) => LoginLogRecorder::format($log)),
             'total' => $total,
         ]);
     }
 
     /**
      * GET /api/admin/engagements
-     * Get platform engagement metrics
+     * SPA expects { engagements: [...] } with enriched like/comment items.
      */
     public function getEngagements(Request $request)
     {
-        $totalSubmissions = DB::table('challenge_submissions')->count();
-        $successfulSubmissions = DB::table('challenge_submissions')
-            ->where('success', true)
-            ->count();
+        $limit = min((int) $request->input('limit', 50), 200);
 
-        $lessonComments = DB::table('lesson_comments')->count();
-        $lessonLikes = DB::table('lesson_likes')->count();
+        $lessonComments = LessonComment::with(['user', 'lesson.course'])
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (LessonComment $c) => [
+                'id' => (string) $c->id,
+                'userName' => $c->user?->name ?? 'User',
+                'lessonTitle' => $c->lesson?->title ?? 'درس',
+                'courseTitle' => $c->lesson?->course?->title ?? 'كورس',
+                'type' => 'comment',
+                'content' => $c->content,
+                'createdAt' => $c->created_at,
+            ]);
 
-        $communityPosts = DB::table('community_posts')->count();
-        $communityComments = DB::table('community_comments')->count();
-        $communityLikes = DB::table('community_post_likes')->count();
+        $likes = LessonLike::with(['user', 'lesson.course'])
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (LessonLike $l) => [
+                'id' => (string) $l->id,
+                'userName' => $l->user?->name ?? 'User',
+                'lessonTitle' => $l->lesson?->title ?? 'درس',
+                'courseTitle' => $l->lesson?->course?->title ?? 'كورس',
+                'type' => 'like',
+                'createdAt' => $l->created_at,
+            ]);
 
-        $enrollments = DB::table('enrollments')->count();
-        $completedCourses = DB::table('enrollments')
-            ->where('completed', true)
-            ->count();
+        $engagements = $lessonComments
+            ->concat($likes)
+            ->sortByDesc('createdAt')
+            ->values()
+            ->take($limit);
 
         return response()->json([
-            'challenges' => [
-                'totalSubmissions' => $totalSubmissions,
-                'successfulSubmissions' => $successfulSubmissions,
-                'successRate' => $totalSubmissions > 0
-                    ? ($successfulSubmissions / $totalSubmissions) * 100
-                    : 0,
-            ],
-            'lessons' => [
-                'comments' => $lessonComments,
-                'likes' => $lessonLikes,
-            ],
-            'community' => [
-                'posts' => $communityPosts,
-                'comments' => $communityComments,
-                'likes' => $communityLikes,
-            ],
-            'courses' => [
-                'enrollments' => $enrollments,
-                'completedCourses' => $completedCourses,
-            ],
+            'engagements' => $engagements,
+            'items' => $engagements,
+            'total' => $engagements->count(),
         ]);
     }
 
     /**
      * GET /api/admin/comments
-     * Get all comments (lesson + community)
-     * ✅ Admin has full access via /admin/comments (routed to ModerationController)
      */
     public function getComments(Request $request)
     {
-        $limit = $request->input('limit', 20);
-        $offset = $request->input('offset', 0);
-        $type = $request->input('type'); // 'lesson' or 'community'
+        $limit = min((int) $request->input('limit', 50), 200);
+        $offset = (int) $request->input('offset', 0);
+        $type = $request->input('type');
 
         if ($type === 'lesson') {
-            $total = DB::table('lesson_comments')->count();
-            $comments = DB::table('lesson_comments')
-                ->join('users', 'lesson_comments.user_id', '=', 'users.id')
-                ->select('lesson_comments.*', 'users.name as user_name')
-                ->orderBy('lesson_comments.created_at', 'desc')
-                ->skip($offset)
-                ->take($limit)
-                ->get();
-        } elseif ($type === 'community') {
-            $total = DB::table('community_comments')->count();
-            $comments = DB::table('community_comments')
-                ->join('users', 'community_comments.user_id', '=', 'users.id')
-                ->select('community_comments.*', 'users.name as user_name')
-                ->orderBy('community_comments.created_at', 'desc')
-                ->skip($offset)
-                ->take($limit)
-                ->get();
-        } else {
-            // Return both types
-            $lessonComments = DB::table('lesson_comments')
-                ->select(DB::raw("'lesson' as type"), 'lesson_comments.*')
-                ->limit(10);
+            $query = LessonComment::with(['user', 'lesson.course']);
+            $total = $query->count();
+            $comments = $query->orderByDesc('created_at')->skip($offset)->take($limit)->get();
 
-            $communityComments = DB::table('community_comments')
-                ->select(DB::raw("'community' as type"), 'community_comments.*')
-                ->limit(10);
-
-            $comments = $lessonComments->unionAll($communityComments)
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            $total = DB::table('lesson_comments')->count() +
-                     DB::table('community_comments')->count();
+            return response()->json([
+                'comments' => $comments->map(fn ($c) => $this->formatLessonComment($c)),
+                'total' => $total,
+            ]);
         }
 
+        if ($type === 'community') {
+            $query = CommunityComment::with(['user', 'post']);
+            $total = $query->count();
+            $comments = $query->orderByDesc('created_at')->skip($offset)->take($limit)->get();
+
+            return response()->json([
+                'comments' => $comments->map(fn ($c) => $this->formatCommunityComment($c)),
+                'total' => $total,
+            ]);
+        }
+
+        $lessonItems = LessonComment::with(['user', 'lesson.course'])
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($c) => $this->formatLessonComment($c));
+
+        $communityItems = CommunityComment::with(['user', 'post'])
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($c) => $this->formatCommunityComment($c));
+
+        $merged = $lessonItems->concat($communityItems)
+            ->sortByDesc(fn ($c) => $c['createdAt'])
+            ->values()
+            ->slice($offset, $limit)
+            ->values();
+
+        $total = LessonComment::count() + CommunityComment::count();
+
         return response()->json([
-            'comments' => $comments,
+            'comments' => $merged,
             'total' => $total,
         ]);
     }
 
     /**
-     * DELETE /api/admin/comments/{type}/{id}
-     * Delete a comment (lesson or community)
-     * ✅ Admin has full access via /admin/comments/{type}/{id}
+     * DELETE /api/admin/comments/{id}
+     * Frontend sends a single id (lesson or community comment).
      */
-    public function deleteComment(Request $request, $type, $id)
+    public function deleteCommentById($id)
     {
-        if ($type === 'lesson') {
-            $comment = LessonComment::findOrFail($id);
-        } elseif ($type === 'community') {
-            $comment = CommunityComment::findOrFail($id);
-        } else {
-            return response()->json(['message' => 'Invalid comment type'], 400);
+        $lesson = LessonComment::find($id);
+        if ($lesson) {
+            $lesson->delete();
+
+            return response()->json(['success' => true, 'message' => 'تم حذف التعليق']);
         }
 
-        $comment->delete();
+        $community = CommunityComment::find($id);
+        if ($community) {
+            $community->delete();
 
-        return response()->json(['message' => 'تم حذف التعليق']);
+            return response()->json(['success' => true, 'message' => 'تم حذف التعليق']);
+        }
+
+        return response()->json(['error' => 'Comment not found'], 404);
+    }
+
+    /**
+     * DELETE /api/admin/comments/{type}/{id}
+     */
+    public function deleteComment($type, $id)
+    {
+        if ($type === 'lesson') {
+            LessonComment::findOrFail($id)->delete();
+        } elseif ($type === 'community') {
+            CommunityComment::findOrFail($id)->delete();
+        } else {
+            return response()->json(['error' => 'Invalid comment type'], 400);
+        }
+
+        return response()->json(['success' => true, 'message' => 'تم حذف التعليق']);
     }
 
     /**
      * GET /api/admin/reviews
-     * Get all reviews for moderation (pending, approved, rejected)
-     * ✅ Admin has full access via /admin/reviews
      */
     public function getReviews(Request $request)
     {
-        $limit = $request->input('limit', 20);
-        $offset = $request->input('offset', 0);
-        $status = $request->input('status'); // pending, approved, rejected
+        $limit = min((int) $request->input('limit', 100), 500);
+        $offset = (int) $request->input('offset', 0);
+        $status = $request->input('status');
 
-        $query = Review::with('user');
+        $query = Review::with(['user', 'course']);
 
         if ($status) {
             $query->where('status', $status);
         }
 
         $total = $query->count();
-        $reviews = $query->orderBy('created_at', 'desc')
+        $reviews = $query->orderByDesc('created_at')
             ->skip($offset)
             ->take($limit)
-            ->get();
+            ->get()
+            ->map(fn (Review $review) => $this->formatReview($review));
 
         return response()->json([
             'reviews' => $reviews,
@@ -197,68 +223,100 @@ class AdminController extends Controller
         ]);
     }
 
-    /**
-     * POST /api/admin/reviews/{review}/approve
-     * Approve a review
-     * ✅ Admin has full access via /admin/reviews/{review}/approve
-     */
     public function approveReview(Request $request, Review $review)
     {
         $review->update(['status' => 'approved']);
 
         return response()->json([
+            'success' => true,
             'message' => 'تم الموافقة على التقييم',
-            'review' => $review,
+            'review' => $this->formatReview($review->fresh(['user', 'course'])),
         ]);
     }
 
-    /**
-     * POST /api/admin/reviews/{review}/reject
-     * Reject a review
-     * ✅ Admin has full access via /admin/reviews/{review}/reject
-     */
     public function rejectReview(Request $request, Review $review)
     {
-        $validated = $request->validate([
-            'reason' => 'nullable|string|max:1000',
-        ]);
+        $reason = $request->input('reason');
 
         $review->update([
             'status' => 'rejected',
-            'message' => $validated['reason'] ?? null,
+            'rejection_reason' => is_string($reason) && $reason !== '' ? $reason : null,
         ]);
 
         return response()->json([
+            'success' => true,
             'message' => 'تم رفض التقييم',
-            'review' => $review,
+            'review' => $this->formatReview($review->fresh(['user', 'course'])),
         ]);
     }
 
-    /**
-     * POST /api/admin/users/{user}/ban
-     * Ban a user
-     */
     public function banUser(Request $request, User $user)
     {
         $user->update(['banned' => true]);
 
         return response()->json([
+            'success' => true,
+            'banned' => true,
             'message' => 'تم حظر المستخدم',
             'user' => $user,
         ]);
     }
 
-    /**
-     * POST /api/admin/users/{user}/unban
-     * Unban a user
-     */
     public function unbanUser(Request $request, User $user)
     {
         $user->update(['banned' => false]);
 
         return response()->json([
+            'success' => true,
+            'banned' => false,
             'message' => 'تم إلغاء حظر المستخدم',
             'user' => $user,
         ]);
+    }
+
+    private function formatLessonComment(LessonComment $c): array
+    {
+        return [
+            'id' => (string) $c->id,
+            'userName' => $c->user?->name ?? 'User',
+            'lessonTitle' => $c->lesson?->title ?? 'درس',
+            'courseTitle' => $c->lesson?->course?->title ?? 'كورس',
+            'content' => $c->content,
+            'status' => 'published',
+            'createdAt' => $c->created_at,
+        ];
+    }
+
+    private function formatCommunityComment(CommunityComment $c): array
+    {
+        return [
+            'id' => (string) $c->id,
+            'userName' => $c->user?->name ?? 'User',
+            'lessonTitle' => $c->post?->title ?? 'مشاركة',
+            'courseTitle' => 'مجتمع',
+            'content' => $c->content,
+            'status' => 'published',
+            'createdAt' => $c->created_at,
+        ];
+    }
+
+    private function formatReview(Review $review): array
+    {
+        $isHome = $review->course_id === null;
+
+        return [
+            'id' => (string) $review->id,
+            'userName' => $isHome
+                ? ($review->reviewer_name ?? $review->user?->name ?? 'زائر')
+                : ($review->user?->name ?? 'مستخدم'),
+            'userAvatar' => $review->user?->avatar_url,
+            'courseTitle' => $isHome ? 'آراء الصفحة الرئيسية' : ($review->course?->title ?? 'كورس'),
+            'rating' => $review->rating,
+            'comment' => $review->comment ?? '',
+            'reviewerName' => $review->reviewer_name ?? '',
+            'isHomeReview' => $isHome,
+            'status' => $review->status,
+            'createdAt' => $review->created_at,
+        ];
     }
 }
