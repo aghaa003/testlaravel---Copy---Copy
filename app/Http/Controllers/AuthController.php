@@ -53,14 +53,21 @@ class AuthController extends Controller
             'email' => 'required|string|email',
             'password' => 'required|string',
         ]);
-
+        // Brute-force lockout — 10 attempts per identifier+IP per 15 minutes
+        $lockKey = 'login_fails_'.sha1($credentials['email'].'|'.$request->ip());
+        if (\Illuminate\Support\Facades\Cache::get($lockKey, 0) >= 10) {
+            return response()->json([
+                'message' => 'تم تجاوز الحد المسموح من المحاولات. يرجى المحاولة بعد 15 دقيقة.',
+            ], 429);
+        }
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+            \Illuminate\Support\Facades\Cache::put($lockKey, Cache::get($lockKey, 0) + 1, now()->addMinutes(15));
             LoginLogRecorder::record(
                 $request,
                 $credentials['email'],
                 'login_failed',
             );
-
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
             throw ValidationException::withMessages([
                 'email' => ['بيانات الاعتماد المدخلة غير صحيحة.'],
             ]);

@@ -129,7 +129,7 @@ Route::get('/challenges/{challenge}', [ChallengeController::class, 'show']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/challenges', [ChallengeController::class, 'store']); // role: creator|employer|admin
     Route::post('/challenges/{challenge}/submit', [ChallengeController::class, 'submit']); // any authenticated user
-
+    Route::get('/challenges/my-submissions', [ChallengeController::class, 'mySubmissions']);
     // ✅ معالجة المحتوى - حذف وتعديل التحديات (creator يعدل ملكه فقط، admin يعدل الكل)
     Route::delete('/challenges/{challenge}', [ChallengeController::class, 'deleteChallenge']); // creator (own) or admin
     Route::put('/challenges/{challenge}', [ChallengeController::class, 'updateChallenge']); // creator (own) or admin
@@ -148,10 +148,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/assignments/submit', [AssignmentController::class, 'submit']); // any authenticated user
 });
 
-// مسارات الذكاء الاصطناعي عبر Ollama
-Route::post('/ai/helper', [AiController::class, 'general']);
-Route::post('/ai/helper-challenges', [AiController::class, 'challenges']);
-Route::post('/ai/helper-projects', [AiController::class, 'projects']);
+// مسارات الذكاء الاصطناعي عبر Ollama — rate limited
+Route::middleware('throttle:20,1')->group(function () {
+    Route::post('/ai/helper', [AiController::class, 'general']);
+    Route::post('/ai/helper-challenges', [AiController::class, 'challenges']);
+    Route::post('/ai/helper-projects', [AiController::class, 'projects']);
+});
 
 // مسار البحث الشامل للمنصة (Global Search)
 Route::get('/search', [SearchController::class, 'index']);

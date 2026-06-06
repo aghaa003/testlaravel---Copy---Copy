@@ -175,4 +175,15 @@ class ChallengeController extends Controller
 
         return response()->json($challenge);
     }
+
+    // GET /api/challenges/my-submissions
+    public function mySubmissions(Request $request)
+    {
+        $submissions = ChallengeSubmission::where('user_id', Auth::id())
+            ->with('challenge')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json($submissions);
+    }
 }
