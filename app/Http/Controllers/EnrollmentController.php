@@ -97,30 +97,32 @@ class EnrollmentController extends Controller
         ]);
     }
 
-    /**
-     * GET /api/courses/{course}/progress
-     * Get user's progress in a course
-     */
+    // GET /api/courses/{course}/progress
     public function getProgress(Request $request, Course $course)
     {
         $user = Auth::user();
 
+        // ✅ Fix Warn 2: return empty array if not enrolled instead of 404
         $enrollment = Enrollment::where('user_id', $user->id)
             ->where('course_id', $course->id)
-            ->firstOrFail();
+            ->first();
 
-        // Load lesson progress
-        $lessonsProgress = $user->lessonProgress()
+        if (! $enrollment) {
+            return response()->json([]);
+        }
+
+        $lessonsProgress = LessonProgress::where('user_id', $user->id)
             ->whereHas('lesson', fn ($q) => $q->where('course_id', $course->id))
-            ->with('lesson')
             ->get();
 
-        return response()->json([
-            'enrollment' => $enrollment,
-            'lessonsProgress' => $lessonsProgress,
-            'totalLessons' => $course->lessons()->count(),
-            'completedLessons' => $lessonsProgress->where('completed', true)->count(),
+        // ✅ Fix 8: return flat array with camelCase keys CourseWatchPage expects
+        $rows = $lessonsProgress->map(fn ($lp) => [
+            'lessonId' => $lp->lesson_id,
+            'completed' => (bool) $lp->completed,
+            'watchedSeconds' => $lp->watched_seconds ?? 0,
         ]);
+
+        return response()->json($rows);
     }
 
     /**

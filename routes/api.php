@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Controllers\AiController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AiController;
 use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChallengeController;
@@ -170,13 +170,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::match(['put', 'post'], '/users/profile', [UserController::class, 'updateProfile']);
     Route::match(['put', 'patch'], '/users/{user}', [UserController::class, 'update']);
     Route::post('/users/points', [UserController::class, 'addPoints']);
-
-    // ✅ مسارات الإخطارات (مكررة من الأعلى - تُترك هنا للتوضيح)
-    Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
-    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
-    Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
-    Route::delete('/notifications', [NotificationController::class, 'deleteAll']);
 
     // 🔐 مسارات المعالجة والاعتدال (Employer & Admin) - الموافقة على المحتوى
     Route::get('/employer/courses', [ModerationController::class, 'getCourses']);

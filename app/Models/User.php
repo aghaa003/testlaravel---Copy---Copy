@@ -13,8 +13,9 @@ class User extends Authenticatable
     protected $fillable = [
         'id', 'name', 'username', 'email', 'password',
         'avatar_url', 'bio',
-        'github_url', 'linkedin_url', 'website_url', 'skills',
-        'role', 'banned', 'points', 'global_rank',
+        'github_url', 'linkedin_url', 'website_url',
+        'phone', 'country',   // ← add these
+        'skills', 'role', 'banned', 'points', 'global_rank',
     ];
 
     protected $casts = [

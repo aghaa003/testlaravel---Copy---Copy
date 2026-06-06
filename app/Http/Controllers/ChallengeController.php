@@ -45,10 +45,10 @@ class ChallengeController extends Controller
         $user = Auth::user();
 
         // ✅ التحقق من الصلاحيات - creator يمكنه إنشاء تحديات (لأنها محتوى يمكن معالجته)
-        if (!in_array($user->role, ['creator', 'employer', 'admin'])) {
+        if (! in_array($user->role, ['creator', 'employer', 'admin'])) {
             return response()->json([
                 'error' => 'Only creators, employers, and admins can create challenges',
-                'your_role' => $user->role
+                'your_role' => $user->role,
             ], 403);
         }
 
@@ -74,11 +74,16 @@ class ChallengeController extends Controller
         return response()->json($challenge);
     }
 
-    // 4. تسليم حل التحدي ومعالجته (Submit Challenge)
     public function submit(Request $request, Challenge $challenge, CodeReviewService $reviewer)
     {
+        // ✅ Fix 11: use Auth::id(), ignore user_id from request
+        $userId = Auth::id();
+
+        if (! $userId) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
             'solution' => 'nullable|string|max:100000',
             'code' => 'nullable|string|max:100000',
             'language' => 'nullable|string|max:100',
@@ -99,10 +104,9 @@ class ChallengeController extends Controller
         $isSuccess = ($review['verdict'] ?? 'no') === 'yes' && (int) ($review['score'] ?? 0) >= 60;
         $pointsEarned = $isSuccess ? $challenge->points : 0;
 
-        $submission = DB::transaction(function () use ($challenge, $validated, $solution, $language, $review, $isSuccess, $pointsEarned) {
-            // 1. تسجيل عملية التسليم
+        $submission = DB::transaction(function () use ($challenge, $userId, $solution, $language, $review, $isSuccess, $pointsEarned) {
             $sub = ChallengeSubmission::create([
-                'user_id' => $validated['user_id'],
+                'user_id' => $userId,
                 'challenge_id' => $challenge->id,
                 'solution' => $solution,
                 'language' => $language,
@@ -114,16 +118,12 @@ class ChallengeController extends Controller
                     : ($review['hint'] ?? $review['summary'] ?? 'هناك خطأ في الكود البرمجي.'),
             ]);
 
-            // 2. تحديث إحصائيات التحدي
             $challenge->increment('total_submissions');
+            $successCount = $challenge->submissions()->where('success', true)->count();
+            $challenge->update(['success_rate' => ($successCount / $challenge->total_submissions) * 100]);
 
-            $successfulSubmissions = $challenge->submissions()->where('success', true)->count();
-            $newSuccessRate = ($successfulSubmissions / $challenge->total_submissions) * 100;
-            $challenge->update(['success_rate' => $newSuccessRate]);
-
-            // 3. إضافة النقاط للمستخدم في حال النجاح
             if ($isSuccess) {
-                User::where('id', $validated['user_id'])->increment('points', $pointsEarned);
+                User::where('id', $userId)->increment('points', $pointsEarned);
             }
 
             return $sub;
@@ -150,6 +150,7 @@ class ChallengeController extends Controller
         }
 
         $challenge->delete();
+
         return response()->json(['message' => 'Challenge deleted successfully']);
     }
 
@@ -171,6 +172,7 @@ class ChallengeController extends Controller
         ]);
 
         $challenge->update($validated);
+
         return response()->json($challenge);
     }
 }

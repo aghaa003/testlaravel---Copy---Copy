@@ -61,54 +61,42 @@ class LessonController extends Controller
         ], 201);
     }
 
-    /**
-     * GET /api/lessons/{lesson}/comments
-     */
+    // GET /api/lessons/{lesson}/comments
     public function getComments(Request $request, Lesson $lesson)
     {
-        $limit = $request->input('limit', 10);
-        $offset = $request->input('offset', 0);
-
         $comments = $lesson->comments()
             ->whereNull('parent_id')
             ->with(['user', 'replies.user'])
-            ->orderBy('created_at', 'desc')
-            ->skip($offset)
-            ->take($limit)
+            ->orderBy('created_at', 'asc')
             ->get();
 
-        $total = $lesson->comments()->whereNull('parent_id')->count();
-
-        return response()->json([
-            'comments' => $comments,
-            'total' => $total,
-        ]);
+        // ✅ Fix 6: return flat array
+        return response()->json($comments);
     }
 
-    /**
-     * POST /api/lessons/{lesson}/comments
-     * Add comment to lesson
-     */
+    // POST /api/lessons/{lesson}/comments
     public function storeComment(Request $request, Lesson $lesson)
     {
         $user = Auth::user();
 
         $validated = $request->validate([
             'content' => 'required|string|max:5000',
+            // ✅ Warn 1: accept both parent_id and parentId
             'parent_id' => 'nullable|exists:lesson_comments,id',
+            'parentId' => 'nullable|exists:lesson_comments,id',
         ]);
+
+        $parentId = $validated['parent_id'] ?? $validated['parentId'] ?? null;
 
         $comment = $lesson->comments()->create([
             'user_id' => $user->id,
             'content' => $validated['content'],
-            'parent_id' => $validated['parent_id'] ?? null,
+            'parent_id' => $parentId,
             'course_id' => $lesson->course_id,
         ]);
 
-        return response()->json([
-            'message' => 'تم إضافة التعليق',
-            'comment' => $comment->load('user'),
-        ], 201);
+        // ✅ Fix 7: return flat comment
+        return response()->json($comment->load('user'), 201);
     }
 
     /**
@@ -204,8 +192,8 @@ class LessonController extends Controller
         $user = Auth::user();
 
         $lessonsProgress = $user->lessonProgress()
-            ->whereHas('lesson', fn($q) => $q->where('course_id', $course->id))
-            ->with(['lesson' => fn($q) => $q->orderBy('order_num')])
+            ->whereHas('lesson', fn ($q) => $q->where('course_id', $course->id))
+            ->with(['lesson' => fn ($q) => $q->orderBy('order_num')])
             ->get();
 
         return response()->json([

@@ -32,31 +32,43 @@ class CourseController extends Controller
         ]);
     }
 
-    // 2. إنشاء دورة جديدة (CreateCourseBody) - يتطلب دور: creator أو employer أو admin
+    // store() — fix bug 9: accept creatorId camelCase
     public function store(Request $request)
     {
         $user = Auth::user();
 
-        // ✅ التحقق من الصلاحيات - فقط creator و employer و admin يمكنهم إنشاء دورات
-        if (!in_array($user->role, ['creator', 'employer', 'admin'])) {
+        if (! in_array($user->role, ['creator', 'employer', 'admin'])) {
             return response()->json([
                 'error' => 'Only creators, employers, and admins can create courses',
-                'your_role' => $user->role
+                'your_role' => $user->role,
             ], 403);
         }
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
-            'thumbnail_url' => 'nullable|url',
+            'thumbnail_url' => 'nullable|string',
+            'thumbnailUrl' => 'nullable|string',
             'category' => 'required|string',
             'level' => 'required|in:beginner,intermediate,advanced',
             'language' => 'nullable|string',
-            'creator_id' => 'required|exists:users,id', // في المستقبل، سيتم أخذ الـ ID من Auth
         ]);
 
-        $course = Course::create($validated);
-        // جلب الدورة مع بيانات المنشئ لإرجاعها كاملة
+        // ✅ Fix 9: accept both creator_id and creatorId, fallback to auth user
+        $creatorId = $request->input('creator_id')
+            ?? $request->input('creatorId')
+            ?? $user->id;
+
+        $course = Course::create([
+            'title' => $validated['title'],
+            'description' => $validated['description'],
+            'thumbnail_url' => $validated['thumbnail_url'] ?? $validated['thumbnailUrl'] ?? null,
+            'category' => $validated['category'],
+            'level' => $validated['level'],
+            'language' => $validated['language'] ?? null,
+            'creator_id' => $creatorId,
+        ]);
+
         $course->load('creator');
 
         return response()->json($course, 201);
@@ -87,35 +99,39 @@ class CourseController extends Controller
 
     // --- الدروس (Lessons) --- //
 
-    // 5. إضافة درس جديد لدورة معينة (CreateLessonBody) - يتطلب دور: creator أو employer أو admin
+    // storeLesson() — fix bug 10: accept camelCase fields
     public function storeLesson(Request $request, Course $course)
     {
         $user = Auth::user();
 
-        // ✅ التحقق من الصلاحيات - فقط creator و employer و admin يمكنهم إضافة دروس
-        if (!in_array($user->role, ['creator', 'employer', 'admin'])) {
+        if (! in_array($user->role, ['creator', 'employer', 'admin'])) {
             return response()->json([
                 'error' => 'Only creators, employers, and admins can add lessons',
-                'your_role' => $user->role
+                'your_role' => $user->role,
             ], 403);
         }
 
-        $validated = $request->validate([
-            'title'           => 'required|string|max:255',
-            'description'     => 'nullable|string',
-            'video_url'       => 'nullable|string',
-            'pdf_url'         => 'nullable|string',
-            'attachment_url'  => 'nullable|string',
-            'attachment_name' => 'nullable|string|max:255',
-            'duration'        => 'nullable|integer',
-            'order_num'       => 'required|integer',
+        $request->validate([
+            'title' => 'required|string|max:255',
         ]);
 
-        $lesson = $course->lessons()->create($validated);
+        // ✅ Fix 10: resolve both snake_case and camelCase
+        $lesson = $course->lessons()->create([
+            'title' => $request->input('title'),
+            'description' => $request->input('description'),
+            'video_url' => $request->input('video_url') ?? $request->input('videoUrl'),
+            'pdf_url' => $request->input('pdf_url') ?? $request->input('pdfUrl'),
+            'attachment_url' => $request->input('attachment_url') ?? $request->input('attachmentUrl'),
+            'attachment_name' => $request->input('attachment_name') ?? $request->input('attachmentName'),
+            'duration' => $request->input('duration'),
+            'order_num' => $request->input('order_num') ?? $request->input('order') ?? 1,
+        ]);
+
         $course->increment('total_lessons');
 
         return response()->json($lesson, 201);
     }
+
     // --- التقييمات (Reviews) --- //
 
     // 6. جلب تقييمات الدورة
@@ -127,29 +143,27 @@ class CourseController extends Controller
         return response()->json($reviews);
     }
 
-    // 7. إضافة تقييم جديد لدورة (CreateReviewBody)
+    // ✅ Warn 3: fix storeReview to use Auth::id()
     public function storeReview(Request $request, Course $course)
     {
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id', // لاحقاً من الـ Auth
             'rating' => 'required|integer|min:1|max:5',
             'comment' => 'nullable|string',
         ]);
 
+        $validated['user_id'] = Auth::id();
+
         $review = $course->reviews()->create($validated);
 
-        // تحديث التقييم المتوسط وعدد التقييمات في الدورة
-        $newTotalReviews = $course->total_reviews + 1;
-        $newAverageRating = (($course->average_rating * $course->total_reviews) + $validated['rating']) / $newTotalReviews;
+        $newTotal = $course->total_reviews + 1;
+        $newAverage = (($course->average_rating * $course->total_reviews) + $validated['rating']) / $newTotal;
 
         $course->update([
-            'total_reviews' => $newTotalReviews,
-            'average_rating' => $newAverageRating,
+            'total_reviews' => $newTotal,
+            'average_rating' => round($newAverage, 2),
         ]);
 
-        $review->load('user');
-
-        return response()->json($review, 201);
+        return response()->json($review->load('user'), 201);
     }
 
     /**
@@ -201,6 +215,7 @@ class CourseController extends Controller
         }
 
         $course->delete();
+
         return response()->json(['message' => 'Course deleted successfully']);
     }
 
@@ -223,6 +238,7 @@ class CourseController extends Controller
         ]);
 
         $course->update($validated);
+
         return response()->json($course);
     }
 
@@ -239,6 +255,7 @@ class CourseController extends Controller
 
         $lesson->delete();
         $course->decrement('total_lessons');
+
         return response()->json(['message' => 'Lesson deleted successfully']);
     }
 }

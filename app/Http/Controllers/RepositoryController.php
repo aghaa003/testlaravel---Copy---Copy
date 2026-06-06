@@ -5,29 +5,38 @@ namespace App\Http\Controllers;
 use App\Models\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class RepositoryController extends Controller
 {
-    // 1. جلب قائمة المشاريع (تطابق RepositoryListResponse)
+    // GET /api/repositories
     public function index(Request $request)
     {
         $query = Repository::with('owner');
+        $viewerId = Auth::id();
+        $userId = $request->input('userId') ?? $request->input('user_id');
 
-        if ($request->has('userId')) {
-            $query->where('owner_id', $request->userId);
-            $viewerId = Auth::id();
-            if ($viewerId !== $request->userId) {
-                $query->where('visibility', 'public');
+        if ($userId) {
+            $query->where('owner_id', $userId);
+            // Only show private repos to the owner themselves
+            if ($viewerId !== $userId) {
+                $query->where('visibility', 'public')
+                    ->where('is_draft', false);
             }
         } else {
-            $query->where('visibility', 'public');
+            $query->where('visibility', 'public')
+                ->where('is_draft', false);
         }
 
         $limit = $request->input('limit', 10);
         $offset = $request->input('offset', 0);
-
         $total = $query->count();
-        $repositories = $query->skip($offset)->take($limit)->get();
+
+        $repositories = $query
+            ->orderBy('created_at', 'desc')
+            ->skip($offset)
+            ->take($limit)
+            ->get();
 
         return response()->json([
             'repositories' => $repositories,
@@ -35,40 +44,49 @@ class RepositoryController extends Controller
         ]);
     }
 
-    // 2. إضافة مشروع جديد (CreateRepositoryBody)
+    // POST /api/repositories
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $user = Auth::user();
+
+        $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
-            'owner_id' => 'required|exists:users,id',
             'technologies' => 'required|array',
-            'visibility' => 'in:public,private',
-            'project_url' => 'nullable|string',
-            'github_url' => 'nullable|string',
-            'is_draft' => 'boolean',
-            'live_demo_url' => 'nullable|string',
-            'cover_image_url' => 'nullable|string',
-            'code_files_urls' => 'nullable|array',
-            'pdf_files_urls' => 'nullable|array',
-            'source_project' => 'nullable|string|max:255',
         ]);
 
-        // cast arrays to JSON strings for storage
-        if (isset($validated['code_files_urls'])) {
-            $validated['code_files_urls'] = json_encode($validated['code_files_urls']);
-        }
-        if (isset($validated['pdf_files_urls'])) {
-            $validated['pdf_files_urls'] = json_encode($validated['pdf_files_urls']);
-        }
+        // ✅ Fix 1+2: resolve owner from auth, accept camelCase fields
+        $ownerId = $request->input('owner_id') ?? $request->input('userId') ?? $user->id;
+        $isPublic = $request->boolean('isPublic', $request->boolean('is_public', true));
+        $isDraft = $request->boolean('isDraft', $request->boolean('is_draft', false));
+        $visibility = $isPublic ? 'public' : 'private';
 
-        $repository = Repository::create($validated);
+        $codeFiles = $request->input('code_files_urls') ?? $request->input('codeFilesUrls') ?? [];
+        $pdfFiles = $request->input('pdf_files_urls') ?? $request->input('pdfFilesUrls') ?? [];
+
+        $repository = Repository::create([
+            'title' => $request->input('title'),
+            'description' => $request->input('description'),
+            'thumbnail_url' => $request->input('thumbnail_url') ?? $request->input('thumbnailUrl'),
+            'owner_id' => $ownerId,
+            'technologies' => $request->input('technologies'),
+            'visibility' => $visibility,
+            'project_url' => $request->input('project_url') ?? $request->input('projectUrl'),
+            'github_url' => $request->input('github_url') ?? $request->input('githubUrl'),
+            'is_draft' => $isDraft,
+            'live_demo_url' => $request->input('live_demo_url') ?? $request->input('liveDemoUrl'),
+            'cover_image_url' => $request->input('cover_image_url') ?? $request->input('coverImageUrl'),
+            'code_files_urls' => json_encode($codeFiles),
+            'pdf_files_urls' => json_encode($pdfFiles),
+            'source_project' => $request->input('source_project') ?? $request->input('sourceProject'),
+        ]);
+
         $repository->load('owner');
 
         return response()->json($repository, 201);
     }
 
-    // 3. عرض تفاصيل مشروع معين
+    // GET /api/repositories/{repository}
     public function show(Repository $repository)
     {
         $repository->load('owner');
@@ -76,12 +94,12 @@ class RepositoryController extends Controller
         return response()->json($repository);
     }
 
-    // 4. جلب المشاريع المميزة (Featured Repositories)
+    // GET /api/repositories/featured
     public function featured()
     {
-        // جلب المشاريع الأكثر حوزاً على الإعجابات
         $featured = Repository::with('owner')
             ->where('visibility', 'public')
+            ->where('is_draft', false)
             ->orderBy('likes_count', 'desc')
             ->take(6)
             ->get();
@@ -89,29 +107,30 @@ class RepositoryController extends Controller
         return response()->json($featured);
     }
 
-    // 5. نظام الإعجاب بالمشروع أو إلغائه (Like / Unlike)
+    // POST /api/repositories/{repository}/like
     public function toggleLike(Request $request, Repository $repository)
     {
-        $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
-        ]);
+        // ✅ Fix 3: always use Auth::id(), ignore user_id from request
+        $userId = Auth::id();
 
-        $userId = $validated['user_id'];
+        if (! $userId) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
 
-        $existing = \DB::table('repository_likes')
+        $existing = DB::table('repository_likes')
             ->where('user_id', $userId)
             ->where('repository_id', $repository->id)
             ->first();
 
         if ($existing) {
-            \DB::table('repository_likes')
+            DB::table('repository_likes')
                 ->where('user_id', $userId)
                 ->where('repository_id', $repository->id)
                 ->delete();
             $repository->decrement('likes_count');
             $liked = false;
         } else {
-            \DB::table('repository_likes')->insert([
+            DB::table('repository_likes')->insert([
                 'user_id' => $userId,
                 'repository_id' => $repository->id,
                 'created_at' => now(),
@@ -127,13 +146,10 @@ class RepositoryController extends Controller
         ]);
     }
 
-    /**
-     * DELETE /api/repositories/{repository}
-     * Owner or admin may delete.
-     */
+    // DELETE /api/repositories/{repository}
     public function destroy(Request $request, Repository $repository)
     {
-        $user = $request->user();
+        $user = Auth::user();
 
         if ($user->role !== 'admin' && $repository->owner_id !== $user->id) {
             return response()->json(['error' => 'Forbidden'], 403);

@@ -36,4 +36,9 @@ class Assignment extends Model
     {
         return $this->hasMany(UserAssignment::class);
     }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'creator_id');
+    }
 }

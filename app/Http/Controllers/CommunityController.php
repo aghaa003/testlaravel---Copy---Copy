@@ -11,73 +11,77 @@ use Illuminate\Support\Facades\Auth;
 
 class CommunityController extends Controller
 {
-    /**
-     * GET /api/community/posts
-     * Get all community posts
-     */
+    // GET /api/community/posts
     public function getPosts(Request $request)
     {
-        $limit = $request->input('limit', 10);
+        $limit = $request->input('limit', 20);
         $offset = $request->input('offset', 0);
         $category = $request->input('category');
+        $userId = Auth::id();
 
-        $query = CommunityPost::with('user', 'comments.user', 'likes');
+        $query = CommunityPost::with('user');
 
         if ($category) {
             $query->where('category', $category);
         }
 
-        $total = $query->count();
         $posts = $query->orderBy('created_at', 'desc')
             ->skip($offset)
             ->take($limit)
-            ->get();
+            ->get()
+            ->map(function ($post) use ($userId) {
+                $liked = $userId
+                    ? CommunityPostLike::where('user_id', $userId)
+                        ->where('post_id', $post->id)
+                        ->exists()
+                    : false;
+                $post->setAttribute('liked', $liked);
+                $post->setAttribute('likesCount', $post->likes_count);
 
-        return response()->json([
-            'posts' => $posts,
-            'total' => $total,
-        ]);
+                return $post;
+            });
+
+        // ✅ Fix 1: return flat array
+        return response()->json($posts);
     }
 
-    /**
-     * POST /api/community/posts
-     * Create new post
-     */
+    // POST /api/community/posts
     public function storePost(Request $request)
     {
         $user = Auth::user();
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'content' => 'required|string|max:5000',
+            // ✅ Fix 2: accept both 'content' and 'body'
+            'content' => 'nullable|string|max:5000',
             'body' => 'nullable|string|max:5000',
             'category' => 'nullable|string|max:100',
             'tags' => 'nullable|array',
         ]);
 
+        $content = $validated['body'] ?? $validated['content'] ?? '';
+
         $post = CommunityPost::create([
             'user_id' => $user->id,
             'title' => $validated['title'],
-            'content' => $validated['content'],
-            'body' => $validated['body'] ?? null,
+            'content' => $content,
+            'body' => $content,
             'category' => $validated['category'] ?? null,
             'tags' => $validated['tags'] ?? [],
         ]);
 
-        return response()->json([
-            'message' => 'تم إنشاء المنشور',
-            'post' => $post->load('user'),
-        ], 201);
+        // ✅ Fix 3: return flat post with user, not { message, post }
+        $post->load('user');
+        $post->setAttribute('liked', false);
+        $post->setAttribute('likesCount', 0);
+
+        return response()->json($post, 201);
     }
 
-    /**
-     * POST /api/community/posts/{post}/like
-     * Toggle post like and create notification
-     */
+    // POST /api/community/posts/{post}/like
     public function togglePostLike(Request $request, CommunityPost $post)
     {
         $user = Auth::user();
-
         $existing = CommunityPostLike::where('user_id', $user->id)
             ->where('post_id', $post->id)
             ->first();
@@ -94,7 +98,6 @@ class CommunityController extends Controller
             $post->increment('likes_count');
             $liked = true;
 
-            // Create notification for post author
             if ($post->user_id !== $user->id) {
                 Notification::create([
                     'user_id' => $post->user_id,
@@ -115,34 +118,19 @@ class CommunityController extends Controller
         ]);
     }
 
-    /**
-     * GET /api/community/posts/{post}/comments
-     * Get post comments
-     */
+    // GET /api/community/posts/{post}/comments
     public function getComments(Request $request, CommunityPost $post)
     {
-        $limit = $request->input('limit', 10);
-        $offset = $request->input('offset', 0);
-
         $comments = $post->comments()
             ->with('user')
-            ->orderBy('created_at', 'desc')
-            ->skip($offset)
-            ->take($limit)
+            ->orderBy('created_at', 'asc')
             ->get();
 
-        $total = $post->comments()->count();
-
-        return response()->json([
-            'comments' => $comments,
-            'total' => $total,
-        ]);
+        // ✅ Fix 4: return flat array
+        return response()->json($comments);
     }
 
-    /**
-     * POST /api/community/posts/{post}/comments
-     * Add comment to post
-     */
+    // POST /api/community/posts/{post}/comments
     public function storeComment(Request $request, CommunityPost $post)
     {
         $user = Auth::user();
@@ -158,7 +146,6 @@ class CommunityController extends Controller
 
         $post->increment('comments_count');
 
-        // Create notification for post author
         if ($post->user_id !== $user->id) {
             Notification::create([
                 'user_id' => $post->user_id,
@@ -172,21 +159,15 @@ class CommunityController extends Controller
             ]);
         }
 
-        return response()->json([
-            'message' => 'تم إضافة التعليق',
-            'comment' => $comment->load('user'),
-        ], 201);
+        // ✅ Fix 5: return flat comment with user
+        return response()->json($comment->load('user'), 201);
     }
 
-    /**
-     * DELETE /api/community/posts/{post}/comments/{comment}
-     * Delete comment from post
-     */
+    // DELETE /api/community/posts/{post}/comments/{comment}
     public function deleteComment(Request $request, CommunityPost $post, CommunityComment $comment)
     {
         $user = Auth::user();
 
-        // Only author or admin can delete
         if ($comment->user_id !== $user->id && $user->role !== 'admin') {
             return response()->json(['message' => 'غير مصرح'], 403);
         }

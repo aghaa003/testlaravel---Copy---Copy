@@ -71,10 +71,10 @@ class AssignmentController extends Controller
         $user = Auth::user();
 
         // ✅ التحقق من الصلاحيات - فقط employer و admin يمكنهم إنشاء تكليفات (ليس creator)
-        if (!in_array($user->role, ['employer', 'admin'])) {
+        if (! in_array($user->role, ['employer', 'admin'])) {
             return response()->json([
                 'error' => 'Only employers and admins can create assignments',
-                'your_role' => $user->role
+                'your_role' => $user->role,
             ], 403);
         }
 
@@ -104,9 +104,13 @@ class AssignmentController extends Controller
 
     public function submit(Request $request, CodeReviewService $reviewer)
     {
+        $userId = Auth::id();
+
+        if (! $userId) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
         $validated = $request->validate([
             'assignment_id' => 'required|integer|exists:assignments,id',
-            'user_id' => 'required|exists:users,id',
             'solution' => 'required|string|max:100000',
             'language' => 'nullable|string|max:100',
         ]);
