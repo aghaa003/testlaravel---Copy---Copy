@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\LoginLogRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -61,13 +62,13 @@ class AuthController extends Controller
             ], 429);
         }
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            \Illuminate\Support\Facades\Cache::put($lockKey, Cache::get($lockKey, 0) + 1, now()->addMinutes(15));
+            Cache::put($lockKey, Cache::get($lockKey, 0) + 1, now()->addMinutes(15));
             LoginLogRecorder::record(
                 $request,
                 $credentials['email'],
                 'login_failed',
             );
-            \Illuminate\Support\Facades\Cache::forget($lockKey);
+            Cache::forget($lockKey);
             throw ValidationException::withMessages([
                 'email' => ['بيانات الاعتماد المدخلة غير صحيحة.'],
             ]);
