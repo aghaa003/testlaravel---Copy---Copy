@@ -225,4 +225,24 @@ class UserController extends Controller
             'totalRepositories' => $user->total_repositories_count ?? null,
         ];
     }
+
+    // GET /api/check-availability?email=x&username=y
+    public function checkAvailability(Request $request)
+    {
+        $result = ['email' => null, 'username' => null];
+
+        if ($request->has('email')) {
+            $result['email'] = User::where('email', $request->email)->exists()
+                ? 'taken'
+                : 'available';
+        }
+
+        if ($request->has('username')) {
+            $result['username'] = User::where('username', $request->username)->exists()
+                ? 'taken'
+                : 'available';
+        }
+
+        return response()->json($result);
+    }
 }
