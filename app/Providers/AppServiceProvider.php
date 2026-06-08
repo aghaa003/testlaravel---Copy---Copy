@@ -3,28 +3,27 @@
 namespace App\Providers;
 
 use Illuminate\Auth\Middleware\Authenticate;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
-        // يجب وضع هذا هنا داخل دالة boot
+        // For SPA: return null so unauthenticated requests get 401 JSON not a redirect
         Authenticate::redirectUsing(function (Request $request) {
-            // بما أن تطبيقنا SPA، فنحن دائماً نريد JSON عند فشل المصادقة
-            return response()->json(['message' => 'Unauthenticated.'], 401);
+            return null;
+        });
+
+        // Global API rate limiter — 120 req/min per user or IP
+        RateLimiter::for('api', function (Request $request) {
+            return Limit::perMinute(120)->by(
+                $request->user()?->id ?: $request->ip()
+            );
         });
     }
 
-    /**
-     * Register any application services.
-     */
-    public function register(): void
-    {
-        //
-    }
+    public function register(): void {}
 }

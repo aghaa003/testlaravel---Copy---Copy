@@ -12,13 +12,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // ✅ Sanctum stateful SPA auth for all API routes
         $middleware->api(prepend: [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
-        // ✅ Security headers on all responses
         $middleware->append(\App\Http\Middleware\SecurityHeadersMiddleware::class);
+        $middleware->throttleApi('api');
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        //
-    })->create();
+    ->withExceptions(function (Exceptions $exceptions): void {})
+    ->create();
