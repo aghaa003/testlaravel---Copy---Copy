@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Course;
 use App\Models\Lesson;
 use App\Models\LessonComment;
 use App\Models\LessonLike;
@@ -13,215 +12,170 @@ use Illuminate\Support\Facades\DB;
 
 class LessonController extends Controller
 {
-    /**
-     * GET/POST /api/lessons/{lesson}/progress
-     */
     public function getProgress(Request $request, Lesson $lesson)
     {
         $user = Auth::user();
-
         $progress = LessonProgress::where('user_id', $user->id)
             ->where('lesson_id', $lesson->id)
             ->first();
 
-        return response()->json([
-            'progress' => $progress ?? [
-                'completed' => false,
-                'watched_seconds' => 0,
-                'completed_at' => null,
-            ],
-        ]);
+        return response()->json($progress ?? ['lesson_id' => $lesson->id, 'completed' => false, 'watched_seconds' => 0]);
     }
 
-    /**
-     * POST /api/lessons/{lesson}/progress
-     * Update lesson progress (watch time, completion)
-     */
     public function updateProgress(Request $request, Lesson $lesson)
     {
         $user = Auth::user();
 
         $validated = $request->validate([
             'watched_seconds' => 'nullable|integer|min:0',
+            'watchedSeconds' => 'nullable|integer|min:0',
             'completed' => 'nullable|boolean',
+            'courseId' => 'nullable|integer',
+            'course_id' => 'nullable|integer',
         ]);
+
+        $watchedSeconds = $validated['watched_seconds'] ?? $validated['watchedSeconds'] ?? 0;
+        $completed = $validated['completed'] ?? false;
 
         $progress = LessonProgress::updateOrCreate(
             ['user_id' => $user->id, 'lesson_id' => $lesson->id],
             [
-                'watched_seconds' => $validated['watched_seconds'] ?? 0,
-                'completed' => $validated['completed'] ?? false,
-                'completed_at' => ($validated['completed'] ?? false) ? now() : null,
+                'watched_seconds' => $watchedSeconds,
+                'completed' => $completed,
+                'completed_at' => $completed ? now() : null,
             ]
         );
 
-        return response()->json([
-            'message' => 'تم تحديث التقدم',
-            'progress' => $progress,
-        ], 201);
+        $courseId = $validated['courseId'] ?? $validated['course_id'] ?? $lesson->course_id;
+        if ($courseId && $completed) {
+            $totalLessons = Lesson::where('course_id', $courseId)->count();
+            $completedLessons = LessonProgress::where('user_id', $user->id)
+                ->whereIn('lesson_id', Lesson::where('course_id', $courseId)->pluck('id'))
+                ->where('completed', true)
+                ->count();
+
+            $pct = $totalLessons > 0 ? (int) (($completedLessons / $totalLessons) * 100) : 0;
+
+            DB::table('enrollments')
+                ->where('user_id', $user->id)
+                ->where('course_id', $courseId)
+                ->update(['progress' => $pct, 'completed' => $pct >= 100]);
+        }
+
+        return response()->json(['message' => 'تم تحديث التقدم', 'progress' => $progress]);
     }
 
-    // GET /api/lessons/{lesson}/comments
     public function getComments(Request $request, Lesson $lesson)
     {
         $comments = $lesson->comments()
             ->whereNull('parent_id')
             ->with(['user', 'replies.user'])
             ->orderBy('created_at', 'asc')
-            ->get();
+            ->get()
+            ->map(fn ($c) => $this->formatComment($c));
 
-        // ✅ Fix 6: return flat array
         return response()->json($comments);
     }
 
-    // POST /api/lessons/{lesson}/comments
     public function storeComment(Request $request, Lesson $lesson)
     {
         $user = Auth::user();
 
         $validated = $request->validate([
             'content' => 'required|string|max:5000',
-            // ✅ Warn 1: accept both parent_id and parentId
             'parent_id' => 'nullable|exists:lesson_comments,id',
             'parentId' => 'nullable|exists:lesson_comments,id',
         ]);
 
         $parentId = $validated['parent_id'] ?? $validated['parentId'] ?? null;
 
-        $comment = $lesson->comments()->create([
+        $comment = LessonComment::create([
+            'lesson_id' => $lesson->id,
+            'course_id' => $lesson->course_id,
             'user_id' => $user->id,
             'content' => $validated['content'],
             'parent_id' => $parentId,
-            'course_id' => $lesson->course_id,
         ]);
 
-        // ✅ Fix 7: return flat comment
-        return response()->json($comment->load('user'), 201);
+        $comment->load('user');
+
+        return response()->json($this->formatComment($comment), 201);
     }
 
-    /**
-     * DELETE /api/lessons/{lesson}/comments/{comment}
-     * Delete comment
-     */
     public function deleteComment(Request $request, Lesson $lesson, LessonComment $comment)
     {
         $user = Auth::user();
-
-        // Only author or admin can delete
         if ($comment->user_id !== $user->id && $user->role !== 'admin') {
             return response()->json(['message' => 'غير مصرح'], 403);
         }
-
         $comment->delete();
 
         return response()->json(['message' => 'تم حذف التعليق']);
     }
 
-    /**
-     * GET /api/lessons/{lesson}/like
-     */
-    public function getLike(Request $request, Lesson $lesson)
-    {
-        return response()->json($this->lessonLikePayload($lesson, Auth::user()));
-    }
-
-    /**
-     * GET /api/lessons/{lesson}/likes — SPA uses { count, liked }
-     */
     public function getLikes(Request $request, Lesson $lesson)
     {
         return response()->json($this->lessonLikePayload($lesson, Auth::user()));
     }
 
-    /**
-     * POST /api/lessons/{lesson}/like
-     */
+    public function getLike(Request $request, Lesson $lesson)
+    {
+        return response()->json($this->lessonLikePayload($lesson, Auth::user()));
+    }
+
     public function toggleLike(Request $request, Lesson $lesson)
     {
         $user = Auth::user();
-
-        $existing = LessonLike::where('user_id', $user->id)
-            ->where('lesson_id', $lesson->id)
-            ->first();
+        $existing = LessonLike::where('user_id', $user->id)->where('lesson_id', $lesson->id)->first();
 
         if ($existing) {
             $existing->delete();
             $liked = false;
         } else {
-            LessonLike::create([
-                'user_id' => $user->id,
-                'lesson_id' => $lesson->id,
-                'course_id' => $lesson->course_id,
-            ]);
+            LessonLike::create(['lesson_id' => $lesson->id, 'course_id' => $lesson->course_id, 'user_id' => $user->id]);
             $liked = true;
         }
 
-        $count = $lesson->likes()->count();
-
-        return response()->json([
-            'liked' => $liked,
-            'count' => $count,
-            'likesCount' => $count,
-        ]);
+        return response()->json($this->lessonLikePayload($lesson->fresh(), $user, $liked));
     }
 
-    private function lessonLikePayload(Lesson $lesson, $user): array
-    {
-        $liked = false;
-        if ($user) {
-            $liked = LessonLike::where('user_id', $user->id)
-                ->where('lesson_id', $lesson->id)
-                ->exists();
-        }
-
-        $count = $lesson->likes()->count();
-
-        return [
-            'liked' => $liked,
-            'count' => $count,
-            'likesCount' => $count,
-        ];
-    }
-
-    /**
-     * GET /api/courses/{course}/progress
-     * Get all lessons progress for course
-     */
-    public function getCourseProgress(Request $request, Course $course)
+    public function getCourseProgress(Request $request, $courseId)
     {
         $user = Auth::user();
+        $progress = LessonProgress::where('user_id', $user->id)
+            ->whereIn('lesson_id', Lesson::where('course_id', $courseId)->pluck('id'))
+            ->get()
+            ->map(fn ($lp) => [
+                'lessonId' => $lp->lesson_id,
+                'completed' => (bool) $lp->completed,
+                'watchedSeconds' => $lp->watched_seconds ?? 0,
+            ]);
 
-        $lessonsProgress = $user->lessonProgress()
-            ->whereHas('lesson', fn ($q) => $q->where('course_id', $course->id))
-            ->with(['lesson' => fn ($q) => $q->orderBy('order_num')])
-            ->get();
-
-        return response()->json([
-            'lessonsProgress' => $lessonsProgress,
-            'totalLessons' => $course->lessons()->count(),
-            'completedLessons' => $lessonsProgress->where('completed', true)->count(),
-        ]);
+        return response()->json($progress);
     }
 
-    /**
-     * GET /api/courses/{course}/viewers
-     * Get course viewers/enrollment stats
-     */
-    public function getCourseViewers(Request $request, Course $course)
+    private function lessonLikePayload(Lesson $lesson, $user, ?bool $liked = null): array
     {
-        $enrolledCount = DB::table('enrollments')
-            ->where('course_id', $course->id)
-            ->count();
+        $likeCount = LessonLike::where('lesson_id', $lesson->id)->count();
+        if ($liked === null) {
+            $liked = $user
+                ? LessonLike::where('user_id', $user->id)->where('lesson_id', $lesson->id)->exists()
+                : false;
+        }
 
-        $completedCount = DB::table('enrollments')
-            ->where('course_id', $course->id)
-            ->where('completed', true)
-            ->count();
+        return ['liked' => $liked, 'likesCount' => $likeCount];
+    }
 
-        return response()->json([
-            'totalViewers' => $enrolledCount,
-            'completed' => $completedCount,
-            'inProgress' => $enrolledCount - $completedCount,
-        ]);
+    private function formatComment(LessonComment $comment): array
+    {
+        $data = $comment->toArray();
+        $data['userName'] = $comment->user->name ?? 'مجهول';
+        $data['userAvatar'] = $comment->user->avatar_url ?? null;
+
+        if ($comment->relationLoaded('replies')) {
+            $data['replies'] = $comment->replies->map(fn ($r) => $this->formatComment($r))->toArray();
+        }
+
+        return $data;
     }
 }

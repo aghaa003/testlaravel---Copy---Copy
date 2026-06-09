@@ -7,17 +7,25 @@ use Illuminate\Support\Facades\Storage;
 
 class UploadController extends Controller
 {
-    /**
-     * POST /api/upload
-     * Upload a single file
-     */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'file' => 'required|file|max:20480', // 20MB max
-        ]);
+        $fieldName = 'file';
+        if ($request->hasFile('image')) {
+            $fieldName = 'image';
+        }
+        if ($request->hasFile('avatar')) {
+            $fieldName = 'avatar';
+        }
+        if ($request->hasFile('video')) {
+            $fieldName = 'video';
+        }
+        if ($request->hasFile('pdf')) {
+            $fieldName = 'pdf';
+        }
 
-        $file = $validated['file'];
+        $request->validate([$fieldName => 'required|file|max:102400']);
+
+        $file = $request->file($fieldName);
         $path = Storage::disk('public')->put('uploads', $file);
 
         return response()->json([
@@ -25,29 +33,53 @@ class UploadController extends Controller
                 'url' => '/storage/'.$path,
                 'name' => $file->getClientOriginalName(),
                 'size' => $file->getSize(),
+                'type' => $file->getMimeType(),
             ],
+            'url' => '/storage/'.$path,
         ], 201);
     }
 
-    /**
-     * POST /api/upload/multiple
-     * Upload multiple files at once
-     */
     public function storeMultiple(Request $request)
     {
-        $validated = $request->validate([
-            'files' => 'required|array|min:1|max:10',
-            'files.*' => 'file|max:20480',
-        ]);
+        $files = [];
+
+        if ($request->hasFile('files')) {
+            $input = $request->file('files');
+            $files = is_array($input) ? $input : [$input];
+        } elseif ($request->hasFile('file')) {
+            $input = $request->file('file');
+            $files = is_array($input) ? $input : [$input];
+        } else {
+            foreach ($request->files->all() as $value) {
+                if (is_array($value)) {
+                    $files = array_merge($files, $value);
+                } else {
+                    $files[] = $value;
+                }
+            }
+        }
+
+        if (empty($files)) {
+            return response()->json(['message' => 'لم يتم إرسال أي ملفات'], 422);
+        }
 
         $urls = [];
-        foreach ($validated['files'] as $file) {
+        foreach ($files as $file) {
+            if (! $file || ! $file->isValid()) {
+                continue;
+            }
             $path = Storage::disk('public')->put('uploads', $file);
-            $urls[] = '/storage/'.$path;
+            $urls[] = [
+                'url' => '/storage/'.$path,
+                'name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+                'type' => $file->getMimeType(),
+            ];
         }
 
         return response()->json([
-            'urls' => $urls,
+            'urls' => array_column($urls, 'url'),
+            'files' => $urls,
         ], 201);
     }
 }
