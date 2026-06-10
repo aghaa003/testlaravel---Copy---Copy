@@ -137,6 +137,8 @@ class AuthController extends Controller
             'github_url' => $user->github_url,
             'linkedin_url' => $user->linkedin_url,
             'website_url' => $user->website_url,
+            'phone' => $user->phone,
+            'country' => $user->country,
             'skills' => $user->skills ?? [],
             'role' => $user->role,
             'banned' => $user->banned,

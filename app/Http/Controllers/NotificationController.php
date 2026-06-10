@@ -23,7 +23,15 @@ class NotificationController extends Controller
             ->orderBy('created_at', 'desc')
             ->skip($offset)
             ->take($limit)
-            ->get();
+            ->get()
+            ->map(function (Notification $notification) {
+                $notification->setAttribute('entityId', $notification->entity_id);
+                $notification->setAttribute('entityTitle', $notification->entity_title);
+                $notification->setAttribute('fromUserName', $notification->from_user_name);
+                $notification->setAttribute('createdAt', $notification->created_at?->toJSON());
+
+                return $notification;
+            });
 
         $unreadCount = $user->notifications()
             ->where('read', false)

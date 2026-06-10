@@ -8,10 +8,12 @@ use App\Http\Controllers\ChallengeController;
 use App\Http\Controllers\CommunityController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
+use App\Http\Controllers\ExampleController;
 use App\Http\Controllers\HomeReviewController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\ModerationController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\RepositoryController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StatsController;
@@ -40,12 +42,17 @@ Route::get('/repositories', [RepositoryController::class, 'index']);
 Route::get('/repositories/{repository}', [RepositoryController::class, 'show']);
 
 Route::get('/challenges', [ChallengeController::class, 'index']);
+Route::middleware('auth:sanctum')->get('/challenges/my-submissions', [ChallengeController::class, 'mySubmissions']);
 Route::get('/challenges/{challenge}', [ChallengeController::class, 'show']);
 
 Route::get('/community/posts', [CommunityController::class, 'getPosts']);
 Route::get('/community/posts/{post}/comments', [CommunityController::class, 'getComments']);
 
 Route::get('/home-reviews', [HomeReviewController::class, 'index']);
+
+Route::get('/examples', [ExampleController::class, 'index']);
+
+Route::get('/projects', [ProjectController::class, 'index']);
 
 Route::get('/courses-with-assignments', [AssignmentController::class, 'coursesWithAssignments']);
 Route::get('/assignments', [AssignmentController::class, 'index']);
@@ -77,6 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Auth & profile
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::get('/users', [UserController::class, 'index']);
     Route::get('/users/profile', [UserController::class, 'profile']);
     Route::match(['put', 'post'], '/users/profile', [UserController::class, 'updateProfile']);
     Route::match(['put', 'patch'], '/users/{user}', [UserController::class, 'update']);
@@ -108,13 +116,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Repositories
     Route::post('/repositories', [RepositoryController::class, 'store']);
+    Route::put('/repositories/{repository}', [RepositoryController::class, 'update']);
     Route::delete('/repositories/{repository}', [RepositoryController::class, 'destroy']);
     Route::post('/repositories/{repository}/like', [RepositoryController::class, 'toggleLike']);
 
     // Challenges
     Route::post('/challenges', [ChallengeController::class, 'store']);
     Route::post('/challenges/{challenge}/submit', [ChallengeController::class, 'submit']);
-    Route::get('/challenges/my-submissions', [ChallengeController::class, 'mySubmissions']);
     Route::put('/challenges/{challenge}', [ChallengeController::class, 'updateChallenge']);
     Route::delete('/challenges/{challenge}', [ChallengeController::class, 'deleteChallenge']);
 
@@ -139,6 +147,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/home-reviews', [HomeReviewController::class, 'store']);
     Route::post('/home-reviews/{review}/approve', [HomeReviewController::class, 'approve']);
     Route::post('/home-reviews/{review}/reject', [HomeReviewController::class, 'reject']);
+
+    // Examples (admin/employer manage)
+    Route::post('/examples', [ExampleController::class, 'store']);
+    Route::match(['put', 'patch'], '/examples/{example}', [ExampleController::class, 'update']);
+    Route::delete('/examples/{example}', [ExampleController::class, 'destroy']);
+
+    // Projects (admin/employer manage)
+    Route::post('/projects', [ProjectController::class, 'store']);
+    Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
 
     // Employer moderation
     Route::get('/employer/courses', [ModerationController::class, 'getCourses']);

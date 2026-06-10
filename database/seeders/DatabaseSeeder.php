@@ -13,6 +13,8 @@ class DatabaseSeeder extends Seeder
             CourseSeeder::class,
             ChallengeSeeder::class,
             CommunitySeeder::class,
+            ExampleSeeder::class,
+            ProjectSeeder::class,
         ]);
     }
 }

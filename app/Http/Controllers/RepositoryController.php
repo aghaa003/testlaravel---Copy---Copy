@@ -72,18 +72,70 @@ class RepositoryController extends Controller
             'technologies' => $request->input('technologies'),
             'visibility' => $visibility,
             'project_url' => $request->input('project_url') ?? $request->input('projectUrl'),
-            'github_url' => $request->input('github_url') ?? $request->input('githubUrl'),
+            'github_url' => $request->input('github_url') ?? $request->input('githubUrl') ?? $request->input('repoUrl'),
             'is_draft' => $isDraft,
             'live_demo_url' => $request->input('live_demo_url') ?? $request->input('liveDemoUrl'),
             'cover_image_url' => $request->input('cover_image_url') ?? $request->input('coverImageUrl'),
-            'code_files_urls' => json_encode($codeFiles),
-            'pdf_files_urls' => json_encode($pdfFiles),
+            'code_files_urls' => $codeFiles,
+            'pdf_files_urls' => $pdfFiles,
             'source_project' => $request->input('source_project') ?? $request->input('sourceProject'),
         ]);
 
         $repository->load('owner');
 
         return response()->json($repository, 201);
+    }
+
+    // PUT /api/repositories/{repository}
+    public function update(Request $request, Repository $repository)
+    {
+        $user = Auth::user();
+
+        if ($user->role !== 'admin' && $repository->owner_id !== $user->id) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $request->validate([
+            'title' => 'sometimes|string|max:255',
+            'description' => 'sometimes|string',
+            'technologies' => 'sometimes|array',
+        ]);
+
+        $updates = [];
+
+        if ($request->has('title')) {
+            $updates['title'] = $request->input('title');
+        }
+        if ($request->has('description')) {
+            $updates['description'] = $request->input('description');
+        }
+        if ($request->has('technologies')) {
+            $updates['technologies'] = $request->input('technologies');
+        }
+        if ($request->has('repoUrl') || $request->has('github_url') || $request->has('githubUrl')) {
+            $updates['github_url'] = $request->input('github_url') ?? $request->input('githubUrl') ?? $request->input('repoUrl');
+        }
+        if ($request->has('liveDemoUrl') || $request->has('live_demo_url')) {
+            $updates['live_demo_url'] = $request->input('live_demo_url') ?? $request->input('liveDemoUrl');
+        }
+        if ($request->has('coverImageUrl') || $request->has('cover_image_url')) {
+            $updates['cover_image_url'] = $request->input('cover_image_url') ?? $request->input('coverImageUrl');
+        }
+        if ($request->has('codeFilesUrls') || $request->has('code_files_urls')) {
+            $updates['code_files_urls'] = $request->input('code_files_urls') ?? $request->input('codeFilesUrls') ?? [];
+        }
+        if ($request->has('pdfFilesUrls') || $request->has('pdf_files_urls')) {
+            $updates['pdf_files_urls'] = $request->input('pdf_files_urls') ?? $request->input('pdfFilesUrls') ?? [];
+        }
+        if ($request->has('isPublic') || $request->has('is_public')) {
+            $isPublic = $request->boolean('isPublic', $request->boolean('is_public', true));
+            $updates['visibility'] = $isPublic ? 'public' : 'private';
+        }
+
+        $repository->update($updates);
+        $repository->load('owner');
+
+        return response()->json($repository);
     }
 
     // GET /api/repositories/{repository}

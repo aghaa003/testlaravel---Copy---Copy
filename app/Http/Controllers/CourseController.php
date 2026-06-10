@@ -24,12 +24,35 @@ class CourseController extends Controller
         $offset = $request->input('offset', 0);
 
         $total = $query->count();
-        $courses = $query->skip($offset)->take($limit)->get();
+        $courses = $query->skip($offset)->take($limit)->get()
+            ->map(fn (Course $course) => $this->formatCourse($course));
 
         return response()->json([
             'courses' => $courses,
             'total' => $total,
         ]);
+    }
+
+    // يحول الدورة إلى الشكل camelCase المتوافق مع واجهة Course في الواجهة الأمامية
+    private function formatCourse(Course $course): array
+    {
+        return [
+            'id' => $course->id,
+            'title' => $course->title,
+            'description' => $course->description,
+            'thumbnailUrl' => $course->thumbnail_url,
+            'category' => $course->category,
+            'level' => $course->level,
+            'language' => $course->language,
+            'creatorId' => $course->creator_id,
+            'creatorName' => $course->creator->name ?? null,
+            'creatorAvatar' => $course->creator->avatar_url ?? null,
+            'averageRating' => (float) $course->average_rating,
+            'totalReviews' => $course->total_reviews,
+            'totalLessons' => $course->total_lessons,
+            'totalEnrollments' => $course->total_enrollments,
+            'createdAt' => $course->created_at?->toJSON(),
+        ];
     }
 
     // store() — fix bug 9: accept creatorId camelCase
@@ -71,7 +94,7 @@ class CourseController extends Controller
 
         $course->load('creator');
 
-        return response()->json($course, 201);
+        return response()->json($this->formatCourse($course), 201);
     }
 
     // 3. عرض تفاصيل الدورة مع الدروس (تطابق CourseDetail)
@@ -82,7 +105,24 @@ class CourseController extends Controller
             $query->orderBy('order_num', 'asc');
         }]);
 
-        return response()->json($course);
+        $data = $this->formatCourse($course);
+        $data['lessons'] = $course->lessons->map(function (Lesson $lesson) {
+            return [
+                'id' => $lesson->id,
+                'courseId' => $lesson->course_id,
+                'title' => $lesson->title,
+                'description' => $lesson->description,
+                'videoUrl' => $lesson->video_url,
+                'pdfUrl' => $lesson->pdf_url,
+                'attachmentUrl' => $lesson->attachment_url,
+                'attachmentName' => $lesson->attachment_name,
+                'duration' => $lesson->duration,
+                'order' => $lesson->order_num,
+                'createdAt' => $lesson->created_at?->toJSON(),
+            ];
+        });
+
+        return response()->json($data);
     }
 
     // 4. جلب الدورات المميزة (Featured Courses)
@@ -92,7 +132,8 @@ class CourseController extends Controller
         $featuredCourses = Course::with('creator')
             ->orderBy('average_rating', 'desc')
             ->take(5)
-            ->get();
+            ->get()
+            ->map(fn (Course $course) => $this->formatCourse($course));
 
         return response()->json($featuredCourses);
     }
@@ -233,13 +274,20 @@ class CourseController extends Controller
             'title' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'thumbnail_url' => 'nullable|url',
+            'thumbnailUrl' => 'nullable|url',
             'category' => 'nullable|string',
             'level' => 'nullable|in:beginner,intermediate,advanced',
         ]);
 
-        $course->update($validated);
+        if (isset($validated['thumbnailUrl'])) {
+            $validated['thumbnail_url'] = $validated['thumbnailUrl'];
+            unset($validated['thumbnailUrl']);
+        }
 
-        return response()->json($course);
+        $course->update($validated);
+        $course->load('creator');
+
+        return response()->json($this->formatCourse($course));
     }
 
     // 10. حذف درس (فقط منشئ الدورة أو admin)

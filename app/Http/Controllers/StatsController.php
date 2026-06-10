@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Challenge;
 use App\Models\ChallengeSubmission;
 use App\Models\Course;
+use App\Models\Repository;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -15,6 +16,7 @@ class StatsController extends Controller
         $totalUsers = User::count();
         $totalCourses = Course::count();
         $totalChallenges = Challenge::count();
+        $totalRepositories = Repository::where('visibility', 'public')->count();
         $totalSubmissions = ChallengeSubmission::count();
         $successful = ChallengeSubmission::where('success', true)->count();
 
@@ -22,7 +24,9 @@ class StatsController extends Controller
             'totalUsers' => $totalUsers,
             'totalCourses' => $totalCourses,
             'totalChallenges' => $totalChallenges,
+            'totalRepositories' => $totalRepositories,
             'totalSubmissions' => $totalSubmissions,
+            'totalChallengesSolved' => $successful,
             'successRate' => $totalSubmissions > 0
                                     ? ($successful / $totalSubmissions) * 100
                                     : 0,

@@ -16,11 +16,18 @@ class CommunityController extends Controller
         $limit = $request->input('limit', 20);
         $offset = $request->input('offset', 0);
         $category = $request->input('category');
+        $search = $request->input('search');
         $userId = Auth::id();
 
         $query = CommunityPost::with('user');
         if ($category) {
             $query->where('category', $category);
+        }
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('body', 'like', "%{$search}%");
+            });
         }
 
         $posts = $query->orderBy('created_at', 'desc')
@@ -31,8 +38,10 @@ class CommunityController extends Controller
                     : false;
                 $post->setAttribute('liked', $liked);
                 $post->setAttribute('likesCount', $post->likes_count);
+                $post->setAttribute('commentsCount', $post->comments_count);
                 $post->setAttribute('authorName', $post->user->name ?? 'مجهول');
                 $post->setAttribute('authorAvatar', $post->user->avatar_url ?? null);
+                $post->setAttribute('createdAt', $post->created_at?->toJSON());
 
                 return $post;
             });
@@ -65,8 +74,10 @@ class CommunityController extends Controller
         $post->load('user');
         $post->setAttribute('liked', false);
         $post->setAttribute('likesCount', 0);
+        $post->setAttribute('commentsCount', 0);
         $post->setAttribute('authorName', $user->name);
         $post->setAttribute('authorAvatar', $user->avatar_url ?? null);
+        $post->setAttribute('createdAt', $post->created_at?->toJSON());
 
         return response()->json($post, 201);
     }
@@ -145,6 +156,7 @@ class CommunityController extends Controller
         $data = $comment->toArray();
         $data['authorName'] = $comment->user->name ?? 'مجهول';
         $data['authorAvatar'] = $comment->user->avatar_url ?? null;
+        $data['createdAt'] = $data['created_at'] ?? null;
 
         return $data;
     }

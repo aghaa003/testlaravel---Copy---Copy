@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -11,6 +12,12 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
+        $user = Auth::user();
+
+        if (! $user || $user->role !== 'admin') {
+            return response()->json(['error' => 'غير مصرح'], 403);
+        }
+
         $query = User::query();
 
         if ($request->has('role')) {
@@ -54,11 +61,27 @@ class UserController extends Controller
             'submissions as solvedChallenges' => function ($query) {
                 $query->where('success', true);
             },
+            'submissions as totalSubmissions',
             'courses as totalCourses',
             'repositories as totalRepositories',
         ]);
 
-        return response()->json($user);
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'username' => $user->username,
+            'avatarUrl' => $user->avatar_url,
+            'avatar_url' => $user->avatar_url,
+            'bio' => $user->bio,
+            'role' => $user->role,
+            'points' => $user->points,
+            'createdAt' => $user->created_at,
+            'solvedChallenges' => $user->solvedChallenges ?? 0,
+            'totalCourses' => $user->totalCourses ?? 0,
+            'totalRepositories' => $user->totalRepositories ?? 0,
+            'totalSubmissions' => $user->totalSubmissions ?? 0,
+            'challengeCategories' => [],
+        ]);
     }
 
     public function update(Request $request, User $user)
@@ -169,7 +192,7 @@ class UserController extends Controller
             $updates['name'] = trim($first.' '.$last) ?: $user->name;
         }
 
-        foreach (['name', 'username', 'bio', 'github_url', 'linkedin_url', 'website_url', 'skills'] as $field) {
+        foreach (['name', 'username', 'bio', 'github_url', 'linkedin_url', 'website_url', 'skills', 'phone', 'country'] as $field) {
             if ($request->has($field)) {
                 $updates[$field] = $request->input($field);
             }
@@ -216,6 +239,8 @@ class UserController extends Controller
             'github_url' => $user->github_url,
             'linkedin_url' => $user->linkedin_url,
             'website_url' => $user->website_url,
+            'phone' => $user->phone,
+            'country' => $user->country,
             'skills' => $user->skills ?? [],
             'role' => $user->role,
             'points' => $user->points,
