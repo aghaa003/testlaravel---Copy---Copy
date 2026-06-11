@@ -6,6 +6,7 @@ use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,6 +23,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(120)->by(
                 $request->user()?->id ?: $request->ip()
             );
+        });
+
+        // Serve files via BinaryFileResponse so HTTP Range requests
+        // (required for <video> seeking) get proper 206 responses.
+        Storage::disk('public')->serveUsing(function (Request $request, $path, $headers) {
+            return response()->file(Storage::disk('public')->path($path), $headers);
         });
     }
 

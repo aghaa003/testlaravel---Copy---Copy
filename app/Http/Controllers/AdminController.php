@@ -14,24 +14,8 @@ use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware(function ($request, $next) {
-            $user = Auth::user();
-            $employerAllowed = ['getReviews', 'approveReview', 'rejectReview'];
-            $action = $request->route()?->getActionMethod();
-
-            if (in_array($action, $employerAllowed, true)) {
-                if (! in_array($user?->role, ['admin', 'employer'], true)) {
-                    return response()->json(['error' => 'غير مصرح'], 403);
-                }
-            } elseif ($user?->role !== 'admin') {
-                return response()->json(['error' => 'غير مصرح'], 403);
-            }
-
-            return $next($request);
-        });
-    }
+    // Role enforcement lives in routes/api.php via the `role:` middleware
+    // (admin-only, plus employer for the review endpoints).
 
     /**
      * GET /api/admin/logs

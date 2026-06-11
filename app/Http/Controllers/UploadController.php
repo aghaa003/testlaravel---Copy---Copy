@@ -23,7 +23,10 @@ class UploadController extends Controller
             $fieldName = 'pdf';
         }
 
-        $request->validate([$fieldName => 'required|file|max:102400']);
+        $request->validate([
+            // Allowlist safe types only — block svg/html/php and other active content.
+            $fieldName => 'required|file|max:102400|mimes:jpg,jpeg,png,gif,webp,pdf,mp4,webm,mov,zip,txt,doc,docx,ppt,pptx,xls,xlsx',
+        ]);
 
         $file = $request->file($fieldName);
         $path = Storage::disk('public')->put('uploads', $file);
@@ -63,9 +66,16 @@ class UploadController extends Controller
             return response()->json(['message' => 'لم يتم إرسال أي ملفات'], 422);
         }
 
+        $allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'mp4', 'webm', 'mov', 'zip', 'txt', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'];
+
         $urls = [];
         foreach ($files as $file) {
             if (! $file || ! $file->isValid()) {
+                continue;
+            }
+            // Skip files that aren't in the allowlist or exceed 100MB.
+            if (! in_array(strtolower($file->getClientOriginalExtension()), $allowedExt, true)
+                || $file->getSize() > 102400 * 1024) {
                 continue;
             }
             $path = Storage::disk('public')->put('uploads', $file);

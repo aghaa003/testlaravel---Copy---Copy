@@ -44,13 +44,7 @@ class ChallengeController extends Controller
     {
         $user = Auth::user();
 
-        // ✅ التحقق من الصلاحيات - creator يمكنه إنشاء تحديات (لأنها محتوى يمكن معالجته)
-        if (! in_array($user->role, ['creator', 'employer', 'admin'])) {
-            return response()->json([
-                'error' => 'Only creators, employers, and admins can create challenges',
-                'your_role' => $user->role,
-            ], 403);
-        }
+        // Role (creator/employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -143,11 +137,8 @@ class ChallengeController extends Controller
     // 5. حذف تحدي (فقط منشئه أو admin) - يتطلب إضافة creator_id في جدول التحديات
     public function deleteChallenge(Request $request, Challenge $challenge)
     {
-        $user = Auth::user();
-
-        if ($user->role !== 'admin' && $user->id !== $challenge->creator_id) {
-            return response()->json(['error' => 'You can only delete your own challenges'], 403);
-        }
+        // Owner-or-admin enforced by ChallengePolicy.
+        $this->authorize('delete', $challenge);
 
         $challenge->delete();
 
@@ -157,11 +148,8 @@ class ChallengeController extends Controller
     // 6. تحديث تحدي (فقط منشئه أو admin)
     public function updateChallenge(Request $request, Challenge $challenge)
     {
-        $user = Auth::user();
-
-        if ($user->role !== 'admin' && $user->id !== $challenge->creator_id) {
-            return response()->json(['error' => 'You can only update your own challenges'], 403);
-        }
+        // Owner-or-admin enforced by ChallengePolicy.
+        $this->authorize('update', $challenge);
 
         $validated = $request->validate([
             'title' => 'nullable|string|max:255',

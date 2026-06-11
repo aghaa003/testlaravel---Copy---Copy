@@ -68,11 +68,13 @@ class AuthController extends Controller
                 $credentials['email'],
                 'login_failed',
             );
-            Cache::forget($lockKey);
             throw ValidationException::withMessages([
                 'email' => ['بيانات الاعتماد المدخلة غير صحيحة.'],
             ]);
         }
+
+        // Successful login — clear the failed-attempt counter.
+        Cache::forget($lockKey);
 
         $request->session()->regenerate();
 
@@ -143,7 +145,7 @@ class AuthController extends Controller
             'role' => $user->role,
             'banned' => $user->banned,
             'points' => $user->points,
-            'global_rank' => $user->global_rank,
+            'global_rank' => User::where('points', '>', $user->points)->count() + 1,
             'createdAt' => $user->created_at?->timestamp * 1000,
             'publicMetadata' => ['role' => $user->role],
         ];

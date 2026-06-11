@@ -15,8 +15,12 @@ class User extends Authenticatable
         'avatar_url', 'bio',
         'github_url', 'linkedin_url', 'website_url',
         'phone', 'country',   // ← add these
-        'skills', 'role', 'banned', 'points', 'global_rank',
+        'skills', 'role', 'banned', 'points',
         'provider', 'provider_id',
+    ];
+
+    protected $hidden = [
+        'password', 'remember_token', 'provider_id',
     ];
 
     protected $casts = [

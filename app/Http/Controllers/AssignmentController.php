@@ -70,13 +70,7 @@ class AssignmentController extends Controller
     {
         $user = Auth::user();
 
-        // ✅ التحقق من الصلاحيات - فقط employer و admin يمكنهم إنشاء تكليفات (ليس creator)
-        if (! in_array($user->role, ['employer', 'admin'])) {
-            return response()->json([
-                'error' => 'Only employers and admins can create assignments',
-                'your_role' => $user->role,
-            ], 403);
-        }
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $validated = $request->validate([
             'course_id' => 'required|integer|exists:courses,id',
@@ -92,9 +86,43 @@ class AssignmentController extends Controller
             'due_date' => 'nullable|date',
         ]);
 
+        $validated['creator_id'] = $user->id;
+
         $assignment = Assignment::create($validated);
 
-        return response()->json($assignment, 201);
+        return response()->json($assignment->load('course:id,title,category,language'), 201);
+    }
+
+    public function update(Request $request, Assignment $assignment)
+    {
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
+
+        $validated = $request->validate([
+            'course_id' => 'sometimes|integer|exists:courses,id',
+            'title' => 'sometimes|string|max:255',
+            'question' => 'sometimes|string',
+            'description' => 'nullable|string',
+            'requirements' => 'nullable|string',
+            'difficulty' => 'nullable|integer|min:1|max:5',
+            'language' => 'nullable|string|max:100',
+            'assignment_order' => 'nullable|integer|min:1',
+            'points' => 'nullable|integer|min:0|max:1000',
+            'is_active' => 'nullable|boolean',
+            'due_date' => 'nullable|date',
+        ]);
+
+        $assignment->update($validated);
+
+        return response()->json($assignment->load('course:id,title,category,language'));
+    }
+
+    public function destroy(Request $request, Assignment $assignment)
+    {
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
+
+        $assignment->delete();
+
+        return response()->json(['success' => true, 'message' => 'Assignment deleted']);
     }
 
     public function show(Assignment $assignment)
@@ -121,10 +149,10 @@ class AssignmentController extends Controller
         $score = (int) ($review['score'] ?? 0);
         $completed = ($review['verdict'] ?? 'no') === 'yes' && $score >= 60;
 
-        $submission = DB::transaction(function () use ($validated, $language, $review, $score, $completed) {
+        $submission = DB::transaction(function () use ($userId, $validated, $language, $review, $score, $completed) {
             return UserAssignment::updateOrCreate(
                 [
-                    'user_id' => $validated['user_id'],
+                    'user_id' => $userId,
                     'assignment_id' => $validated['assignment_id'],
                 ],
                 [

@@ -32,7 +32,7 @@ class ExampleController extends Controller
     // POST /api/examples — admin/employer only
     public function store(Request $request)
     {
-        $this->authorizeManage($request);
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -53,7 +53,7 @@ class ExampleController extends Controller
     // PUT/PATCH /api/examples/{example} — admin/employer only
     public function update(Request $request, Example $example)
     {
-        $this->authorizeManage($request);
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
@@ -72,19 +72,10 @@ class ExampleController extends Controller
     // DELETE /api/examples/{example} — admin/employer only
     public function destroy(Request $request, Example $example)
     {
-        $this->authorizeManage($request);
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $example->delete();
 
         return response()->json(['message' => 'تم الحذف بنجاح']);
-    }
-
-    private function authorizeManage(Request $request): void
-    {
-        $user = $request->user();
-
-        if (! $user || ! in_array($user->role, ['admin', 'employer'], true)) {
-            abort(403, 'غير مصرح لك بإدارة الأمثلة');
-        }
     }
 }

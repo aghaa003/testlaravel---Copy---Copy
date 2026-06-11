@@ -13,23 +13,7 @@ use Illuminate\Support\Facades\Auth;
 
 class ModerationController extends Controller
 {
-    /**
-     * Constructor - Verify employer or admin role
-     * Only employers and admins can access moderation endpoints
-     */
-    public function __construct()
-    {
-        $this->middleware(function ($request, $next) {
-            $user = Auth::user();
-            if (!in_array($user->role, ['employer', 'admin'])) {
-                return response()->json([
-                    'error' => 'Only employers and admins can moderate content',
-                    'your_role' => $user->role
-                ], 403);
-            }
-            return $next($request);
-        });
-    }
+    // Role enforcement (employer/admin) lives in routes/api.php via `role:` middleware.
 
     /**
      * GET /api/employer/courses

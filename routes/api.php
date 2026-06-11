@@ -27,6 +27,7 @@ Route::get('/healthz', fn () => response()->json(['status' => 'ok']));
 // ── Public read-only routes ──────────────────────────────────────────────────
 Route::get('/users/leaderboard', [UserController::class, 'leaderboard']);
 Route::get('/users/{user}', [UserController::class, 'show']);
+Route::get('/users/{user}/courses', [UserController::class, 'courses']);
 
 Route::get('/courses/featured', [CourseController::class, 'featured']);
 Route::get('/courses', [CourseController::class, 'index']);
@@ -79,34 +80,25 @@ Route::middleware(['auth:sanctum', 'throttle:30,1'])->group(function () {
 });
 
 // ── All authenticated write routes ───────────────────────────────────────────
+// Role gating is declared here via the `role:` middleware (see RoleMiddleware).
+// Routes whose access depends on record ownership (edit your own course/repo, or
+// admin) are left ungated here and enforced by Policies inside the controllers.
 Route::middleware('auth:sanctum')->group(function () {
 
-    // Auth & profile
+    // Auth & profile (any authenticated user)
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
-    Route::get('/users', [UserController::class, 'index']);
     Route::get('/users/profile', [UserController::class, 'profile']);
     Route::match(['put', 'post'], '/users/profile', [UserController::class, 'updateProfile']);
-    Route::match(['put', 'patch'], '/users/{user}', [UserController::class, 'update']);
-    Route::post('/users/points', [UserController::class, 'addPoints']);
 
-    // Courses
-    Route::post('/courses', [CourseController::class, 'store']);
-    Route::put('/courses/{course}', [CourseController::class, 'updateCourse']);
-    Route::delete('/courses/{course}', [CourseController::class, 'destroyCourse']);
-    Route::post('/courses/{course}/lessons', [CourseController::class, 'storeLesson']);
-    Route::delete('/courses/{course}/lessons/{lesson}', [CourseController::class, 'deleteLesson']);
-    Route::post('/courses/{course}/reviews', [CourseController::class, 'storeReview']);
-    Route::delete('/courses/{course}/reviews/{review}', [CourseController::class, 'destroyReview']);
-
-    // Enrollment & progress
+    // Enrollment & progress (any authenticated user)
     Route::post('/courses/{course}/enroll', [EnrollmentController::class, 'enroll']);
     Route::get('/enrollments', [EnrollmentController::class, 'index']);
     Route::post('/courses/{course}/progress', [EnrollmentController::class, 'updateProgress']);
     Route::get('/courses/{course}/progress', [EnrollmentController::class, 'getProgress']);
     Route::get('/courses/{course}/viewers', [EnrollmentController::class, 'getViewers']);
 
-    // Lessons
+    // Lessons (any authenticated user; comment delete is owner-or-admin via Policy)
     Route::get('/lessons/{lesson}/progress', [LessonController::class, 'getProgress']);
     Route::post('/lessons/{lesson}/progress', [LessonController::class, 'updateProgress']);
     Route::post('/lessons/{lesson}/comments', [LessonController::class, 'storeComment']);
@@ -114,70 +106,99 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/lessons/{lesson}/like', [LessonController::class, 'toggleLike']);
     Route::get('/courses/{course}/lessons-progress', [LessonController::class, 'getCourseProgress']);
 
-    // Repositories
+    // Repositories — create is open; update/destroy are owner-or-admin via Policy
     Route::post('/repositories', [RepositoryController::class, 'store']);
     Route::put('/repositories/{repository}', [RepositoryController::class, 'update']);
     Route::delete('/repositories/{repository}', [RepositoryController::class, 'destroy']);
     Route::post('/repositories/{repository}/like', [RepositoryController::class, 'toggleLike']);
 
-    // Challenges
-    Route::post('/challenges', [ChallengeController::class, 'store']);
+    // Challenges — submit is open; update/delete are owner-or-admin via Policy
     Route::post('/challenges/{challenge}/submit', [ChallengeController::class, 'submit']);
     Route::put('/challenges/{challenge}', [ChallengeController::class, 'updateChallenge']);
     Route::delete('/challenges/{challenge}', [ChallengeController::class, 'deleteChallenge']);
 
-    // Assignments
-    Route::post('/assignments', [AssignmentController::class, 'store']);
+    // Courses — review CRUD + ownership-gated mutations (Policy inside controller)
+    Route::post('/courses/{course}/reviews', [CourseController::class, 'storeReview']);
+    Route::delete('/courses/{course}/reviews/{review}', [CourseController::class, 'destroyReview']);
+    Route::put('/courses/{course}', [CourseController::class, 'updateCourse']);
+    Route::delete('/courses/{course}', [CourseController::class, 'destroyCourse']);
+    Route::delete('/courses/{course}/lessons/{lesson}', [CourseController::class, 'deleteLesson']);
+
+    // Assignment submission (any authenticated user)
     Route::post('/assignments/submit', [AssignmentController::class, 'submit']);
 
-    // Community
+    // Community (any authenticated user; comment delete is owner-or-admin via Policy)
     Route::post('/community/posts', [CommunityController::class, 'storePost']);
     Route::post('/community/posts/{post}/like', [CommunityController::class, 'togglePostLike']);
     Route::post('/community/posts/{post}/comments', [CommunityController::class, 'storeComment']);
     Route::delete('/community/posts/{post}/comments/{comment}', [CommunityController::class, 'deleteComment']);
 
-    // Notifications
+    // Notifications (owner-scoped inside controller)
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications', [NotificationController::class, 'deleteAll']);
 
-    // Home reviews
+    // Home reviews — anyone may submit; only employer/admin may moderate
     Route::post('/home-reviews', [HomeReviewController::class, 'store']);
-    Route::post('/home-reviews/{review}/approve', [HomeReviewController::class, 'approve']);
-    Route::post('/home-reviews/{review}/reject', [HomeReviewController::class, 'reject']);
 
-    // Examples (admin/employer manage)
-    Route::post('/examples', [ExampleController::class, 'store']);
-    Route::match(['put', 'patch'], '/examples/{example}', [ExampleController::class, 'update']);
-    Route::delete('/examples/{example}', [ExampleController::class, 'destroy']);
+    // ── Content creators (creator / employer / admin) ──────────────────────────
+    Route::middleware('role:creator,employer,admin')->group(function () {
+        Route::post('/courses', [CourseController::class, 'store']);
+        Route::post('/courses/{course}/lessons', [CourseController::class, 'storeLesson']);
+        Route::post('/challenges', [ChallengeController::class, 'store']);
+    });
 
-    // Projects (admin/employer manage)
-    Route::post('/projects', [ProjectController::class, 'store']);
-    Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
+    // ── Employer / admin (content moderation & management) ─────────────────────
+    Route::middleware('role:employer,admin')->group(function () {
+        // Assignments
+        Route::post('/assignments', [AssignmentController::class, 'store']);
+        Route::put('/assignments/{assignment}', [AssignmentController::class, 'update']);
+        Route::delete('/assignments/{assignment}', [AssignmentController::class, 'destroy']);
 
-    // Employer moderation
-    Route::get('/employer/courses', [ModerationController::class, 'getCourses']);
-    Route::get('/employer/assignments', [ModerationController::class, 'getAssignments']);
-    Route::get('/employer/comments', [ModerationController::class, 'getComments']);
-    Route::delete('/employer/comments/{type}/{id}', [ModerationController::class, 'deleteComment']);
-    Route::get('/employer/reviews', [ModerationController::class, 'getReviews']);
-    Route::post('/employer/reviews/{review}/approve', [ModerationController::class, 'approveReview']);
-    Route::post('/employer/reviews/{review}/reject', [ModerationController::class, 'rejectReview']);
+        // Examples
+        Route::post('/examples', [ExampleController::class, 'store']);
+        Route::match(['put', 'patch'], '/examples/{example}', [ExampleController::class, 'update']);
+        Route::delete('/examples/{example}', [ExampleController::class, 'destroy']);
 
-    // Admin
-    Route::get('/admin/logs', [AdminController::class, 'getLogs']);
-    Route::get('/admin/engagements', [AdminController::class, 'getEngagements']);
-    Route::get('/admin/courses', [ModerationController::class, 'getCourses']);
-    Route::get('/admin/assignments', [ModerationController::class, 'getAssignments']);
-    Route::get('/admin/comments', [AdminController::class, 'getComments']);
-    Route::delete('/admin/comments/{id}', [AdminController::class, 'deleteCommentById'])->whereNumber('id');
-    Route::delete('/admin/comments/{type}/{id}', [AdminController::class, 'deleteComment'])
-        ->where('type', 'lesson|community')->whereNumber('id');
-    Route::get('/admin/reviews', [AdminController::class, 'getReviews']);
-    Route::post('/admin/reviews/{review}/approve', [AdminController::class, 'approveReview']);
-    Route::post('/admin/reviews/{review}/reject', [AdminController::class, 'rejectReview']);
-    Route::post('/admin/users/{user}/ban', [AdminController::class, 'banUser']);
-    Route::post('/admin/users/{user}/unban', [AdminController::class, 'unbanUser']);
+        // Projects
+        Route::post('/projects', [ProjectController::class, 'store']);
+        Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
+
+        // Home review moderation
+        Route::post('/home-reviews/{review}/approve', [HomeReviewController::class, 'approve']);
+        Route::post('/home-reviews/{review}/reject', [HomeReviewController::class, 'reject']);
+
+        // Employer moderation dashboard
+        Route::get('/employer/courses', [ModerationController::class, 'getCourses']);
+        Route::get('/employer/assignments', [ModerationController::class, 'getAssignments']);
+        Route::get('/employer/comments', [ModerationController::class, 'getComments']);
+        Route::delete('/employer/comments/{type}/{id}', [ModerationController::class, 'deleteComment']);
+        Route::get('/employer/reviews', [ModerationController::class, 'getReviews']);
+        Route::post('/employer/reviews/{review}/approve', [ModerationController::class, 'approveReview']);
+        Route::post('/employer/reviews/{review}/reject', [ModerationController::class, 'rejectReview']);
+
+        // Admin dashboard data shared with employers
+        Route::get('/admin/courses', [ModerationController::class, 'getCourses']);
+        Route::get('/admin/assignments', [ModerationController::class, 'getAssignments']);
+        Route::get('/admin/reviews', [AdminController::class, 'getReviews']);
+        Route::post('/admin/reviews/{review}/approve', [AdminController::class, 'approveReview']);
+        Route::post('/admin/reviews/{review}/reject', [AdminController::class, 'rejectReview']);
+    });
+
+    // ── Admin only ─────────────────────────────────────────────────────────────
+    Route::middleware('role:admin')->group(function () {
+        Route::get('/users', [UserController::class, 'index']);
+        Route::match(['put', 'patch'], '/users/{user}', [UserController::class, 'update']);
+
+        Route::get('/admin/logs', [AdminController::class, 'getLogs']);
+        Route::get('/admin/engagements', [AdminController::class, 'getEngagements']);
+        Route::get('/admin/comments', [AdminController::class, 'getComments']);
+        Route::delete('/admin/comments/{id}', [AdminController::class, 'deleteCommentById'])->whereNumber('id');
+        Route::delete('/admin/comments/{type}/{id}', [AdminController::class, 'deleteComment'])
+            ->where('type', 'lesson|community')->whereNumber('id');
+        Route::post('/admin/users/{user}/ban', [AdminController::class, 'banUser']);
+        Route::post('/admin/users/{user}/unban', [AdminController::class, 'unbanUser']);
+    });
 });

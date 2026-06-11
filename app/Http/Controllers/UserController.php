@@ -12,11 +12,7 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
-        $user = Auth::user();
-
-        if (! $user || $user->role !== 'admin') {
-            return response()->json(['error' => 'غير مصرح'], 403);
-        }
+        // Role (admin) enforced by `role:` middleware in routes/api.php.
 
         $query = User::query();
 
@@ -66,6 +62,8 @@ class UserController extends Controller
             'repositories as totalRepositories',
         ]);
 
+        $globalRank = User::where('points', '>', $user->points)->count() + 1;
+
         return response()->json([
             'id' => $user->id,
             'name' => $user->name,
@@ -75,6 +73,7 @@ class UserController extends Controller
             'bio' => $user->bio,
             'role' => $user->role,
             'points' => $user->points,
+            'globalRank' => $globalRank,
             'createdAt' => $user->created_at,
             'solvedChallenges' => $user->solvedChallenges ?? 0,
             'totalCourses' => $user->totalCourses ?? 0,
@@ -84,11 +83,32 @@ class UserController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/users/{user}/courses — public list of courses this user is enrolled in, with progress %.
+     */
+    public function courses(User $user)
+    {
+        $enrollments = $user->enrollments()
+            ->with('course')
+            ->get()
+            ->filter(fn ($e) => $e->course !== null)
+            ->map(function ($enrollment) {
+                return [
+                    'id' => $enrollment->course->id,
+                    'title' => $enrollment->course->title,
+                    'thumbnailUrl' => $enrollment->course->thumbnail_url,
+                    'progress' => $enrollment->progress,
+                    'completed' => $enrollment->completed,
+                ];
+            })
+            ->values();
+
+        return response()->json($enrollments);
+    }
+
     public function update(Request $request, User $user)
     {
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
+        // Role (admin) enforced by `role:` middleware in routes/api.php.
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -140,24 +160,6 @@ class UserController extends Controller
         ]);
 
         return response()->json($this->formatProfileUser($user));
-    }
-
-    /**
-     * POST /api/users/points — Add points to the authenticated user (e.g. after challenge/activity).
-     */
-    public function addPoints(Request $request)
-    {
-        $validated = $request->validate([
-            'points' => 'required|integer|min:1',
-        ]);
-
-        $user = $request->user();
-        $user->increment('points', $validated['points']);
-
-        return response()->json([
-            'success' => true,
-            'totalPoints' => $user->fresh()->points,
-        ]);
     }
 
     /**
@@ -244,7 +246,7 @@ class UserController extends Controller
             'skills' => $user->skills ?? [],
             'role' => $user->role,
             'points' => $user->points,
-            'global_rank' => $user->global_rank,
+            'global_rank' => User::where('points', '>', $user->points)->count() + 1,
             'solvedChallenges' => $user->solved_challenges_count ?? null,
             'totalCourses' => $user->total_courses_count ?? null,
             'totalRepositories' => $user->total_repositories_count ?? null,

@@ -60,12 +60,7 @@ class CourseController extends Controller
     {
         $user = Auth::user();
 
-        if (! in_array($user->role, ['creator', 'employer', 'admin'])) {
-            return response()->json([
-                'error' => 'Only creators, employers, and admins can create courses',
-                'your_role' => $user->role,
-            ], 403);
-        }
+        // Role (creator/employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -143,14 +138,7 @@ class CourseController extends Controller
     // storeLesson() — fix bug 10: accept camelCase fields
     public function storeLesson(Request $request, Course $course)
     {
-        $user = Auth::user();
-
-        if (! in_array($user->role, ['creator', 'employer', 'admin'])) {
-            return response()->json([
-                'error' => 'Only creators, employers, and admins can add lessons',
-                'your_role' => $user->role,
-            ], 403);
-        }
+        // Role (creator/employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $request->validate([
             'title' => 'required|string|max:255',
@@ -248,12 +236,8 @@ class CourseController extends Controller
     // 8. حذف دورة (فقط منشئها أو admin)
     public function destroyCourse(Request $request, Course $course)
     {
-        $user = Auth::user();
-
-        // ✅ التحقق من الصلاحيات - فقط منشئ الدورة أو admin يمكنهم حذفها
-        if ($user->id !== $course->creator_id && $user->role !== 'admin') {
-            return response()->json(['error' => 'You can only delete your own courses'], 403);
-        }
+        // Owner-or-admin enforced by CoursePolicy.
+        $this->authorize('delete', $course);
 
         $course->delete();
 
@@ -263,12 +247,8 @@ class CourseController extends Controller
     // 9. تحديث دورة (فقط منشئها أو admin)
     public function updateCourse(Request $request, Course $course)
     {
-        $user = Auth::user();
-
-        // ✅ التحقق من الصلاحيات - فقط منشئ الدورة أو admin يمكنهم تعديلها
-        if ($user->id !== $course->creator_id && $user->role !== 'admin') {
-            return response()->json(['error' => 'You can only update your own courses'], 403);
-        }
+        // Owner-or-admin enforced by CoursePolicy.
+        $this->authorize('update', $course);
 
         $validated = $request->validate([
             'title' => 'nullable|string|max:255',
@@ -293,13 +273,10 @@ class CourseController extends Controller
     // 10. حذف درس (فقط منشئ الدورة أو admin)
     public function deleteLesson(Request $request, Lesson $lesson)
     {
-        $user = Auth::user();
         $course = $lesson->course;
 
-        // ✅ التحقق من الصلاحيات
-        if ($user->id !== $course->creator_id && $user->role !== 'admin') {
-            return response()->json(['error' => 'You can only delete lessons from your own courses'], 403);
-        }
+        // Managing a course's lessons requires owner-or-admin on the parent course.
+        $this->authorize('update', $course);
 
         $lesson->delete();
         $course->decrement('total_lessons');

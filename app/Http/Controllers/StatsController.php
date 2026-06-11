@@ -54,7 +54,7 @@ class StatsController extends Controller
             'userId' => $user->id,
             'solvedChallenges' => $solvedChallenges,
             'totalPoints' => $user->points,
-            'globalRank' => $user->global_rank ?? 0,
+            'globalRank' => \App\Models\User::where('points', '>', $user->points)->count() + 1,
             'coursesEnrolled' => $coursesEnrolled,
             'repositoriesCreated' => $repositoriesCreated,
             'categoriesBreakdown' => $categoriesBreakdown,

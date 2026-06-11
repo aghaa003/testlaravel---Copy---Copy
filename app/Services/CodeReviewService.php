@@ -178,7 +178,10 @@ class CodeReviewService
     private function askOllamaForVerdict(string $code, string $language, string $problem, string $context): ?array
     {
         $result = $this->callOllama([
-            ['role' => 'system', 'content' => 'You are a strict code judge. Reply only with JSON: {"verdict":"yes|no","score":0-100,"summary":"Arabic summary","strengths":["..."],"improvements":["..."],"explanation":"Arabic explanation","hint":"Arabic hint if no"}'],
+            ['role' => 'system', 'content' => 'You are a strict code judge. Reply with ONLY one valid JSON object and nothing else (no markdown fences, no extra text). '
+                .'Replace every value below with your real assessment — never copy the example values literally. '
+                .'Example of the exact shape required: {"verdict":"yes","score":75,"summary":"ملخص قصير بالعربية","strengths":["نقطة قوة بالعربية"],"improvements":["نقطة تحسين بالعربية"],"explanation":"شرح بالعربية","hint":"تلميح بالعربية أو نص فارغ"}. '
+                .'"verdict" must be the literal string "yes" or "no" (yes only if the code correctly solves the problem and score >= 60). "score" must be a JSON integer between 0 and 100 (a number, not a range).'],
             ['role' => 'user', 'content' => "Context: {$context}\nLanguage: {$language}\nProblem:\n{$problem}\n\nStudent code:\n```{$language}\n{$code}\n```"],
         ], 0.1);
 
@@ -191,8 +194,12 @@ class CodeReviewService
             return null;
         }
 
-        $score = max(0, min(100, (int) ($json['score'] ?? 0)));
-        $verdict = strtolower((string) ($json['verdict'] ?? ($score >= 60 ? 'yes' : 'no')));
+        $score = is_numeric($json['score'] ?? null) ? max(0, min(100, (int) $json['score'])) : null;
+        $verdict = strtolower(trim((string) ($json['verdict'] ?? '')));
+        if (! in_array($verdict, ['yes', 'no'], true)) {
+            $verdict = $score !== null && $score >= 60 ? 'yes' : 'no';
+        }
+        $score ??= ($verdict === 'yes' ? 60 : 0);
         $isCorrect = $verdict === 'yes' && $score >= 60;
 
         return [
@@ -273,9 +280,46 @@ class CodeReviewService
     private function extractJson(string $text): ?array
     {
         $start = strpos($text, '{');
-        $end = strrpos($text, '}');
+        if ($start === false) {
+            return null;
+        }
 
-        if ($start === false || $end === false || $end <= $start) {
+        // Walk forward from the first "{" to find its matching closing brace,
+        // since small models sometimes emit multiple JSON objects in one reply.
+        $depth = 0;
+        $inString = false;
+        $escaped = false;
+        $end = null;
+
+        for ($i = $start; $i < strlen($text); $i++) {
+            $char = $text[$i];
+
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === '"') {
+                    $inString = false;
+                }
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+            } elseif ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    $end = $i;
+                    break;
+                }
+            }
+        }
+
+        if ($end === null) {
             return null;
         }
 

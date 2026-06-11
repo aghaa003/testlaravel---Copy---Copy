@@ -89,11 +89,8 @@ class RepositoryController extends Controller
     // PUT /api/repositories/{repository}
     public function update(Request $request, Repository $repository)
     {
-        $user = Auth::user();
-
-        if ($user->role !== 'admin' && $repository->owner_id !== $user->id) {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
+        // Owner-or-admin enforced by RepositoryPolicy.
+        $this->authorize('update', $repository);
 
         $request->validate([
             'title' => 'sometimes|string|max:255',
@@ -201,11 +198,8 @@ class RepositoryController extends Controller
     // DELETE /api/repositories/{repository}
     public function destroy(Request $request, Repository $repository)
     {
-        $user = Auth::user();
-
-        if ($user->role !== 'admin' && $repository->owner_id !== $user->id) {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
+        // Owner-or-admin enforced by RepositoryPolicy.
+        $this->authorize('delete', $repository);
 
         $repository->delete();
 

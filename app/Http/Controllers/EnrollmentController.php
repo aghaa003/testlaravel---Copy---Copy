@@ -19,17 +19,30 @@ class EnrollmentController extends Controller
         $user = Auth::user();
 
         $enrollments = $user->enrollments()
-            ->with('course')
+            ->with('course.lessons')
             ->get()
-            ->map(function ($enrollment) {
+            ->filter(fn ($enrollment) => $enrollment->course !== null)
+            ->map(function ($enrollment) use ($user) {
+                $lessonIds = $enrollment->course->lessons->pluck('id');
+
+                $lastProgress = LessonProgress::where('user_id', $user->id)
+                    ->whereIn('lesson_id', $lessonIds)
+                    ->orderBy('updated_at', 'desc')
+                    ->first();
+
+                $lastLessonId = $lastProgress->lesson_id ?? $enrollment->course->lessons->first()?->id;
+
                 return [
                     'id' => $enrollment->id,
                     'course' => $enrollment->course,
                     'progress' => $enrollment->progress,
                     'completed' => $enrollment->completed,
                     'enrolledAt' => $enrollment->created_at,
+                    'lastLessonId' => $lastLessonId,
+                    'lastWatchedSeconds' => $lastProgress->watched_seconds ?? 0,
                 ];
-            });
+            })
+            ->values();
 
         return response()->json([
             'enrollments' => $enrollments,

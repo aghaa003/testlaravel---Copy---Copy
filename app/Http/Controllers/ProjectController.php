@@ -24,7 +24,7 @@ class ProjectController extends Controller
     // POST /api/projects — admin/employer only
     public function store(Request $request)
     {
-        $this->authorizeManage($request);
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $validated = $request->validate([
             'track' => 'required|in:basics,frontend,backend',
@@ -51,19 +51,10 @@ class ProjectController extends Controller
     // DELETE /api/projects/{project} — admin/employer only
     public function destroy(Request $request, Project $project)
     {
-        $this->authorizeManage($request);
+        // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
 
         $project->delete();
 
         return response()->json(['message' => 'تم الحذف بنجاح']);
-    }
-
-    private function authorizeManage(Request $request): void
-    {
-        $user = $request->user();
-
-        if (! $user || ! in_array($user->role, ['admin', 'employer'], true)) {
-            abort(403, 'غير مصرح لك بإدارة المشاريع');
-        }
     }
 }
