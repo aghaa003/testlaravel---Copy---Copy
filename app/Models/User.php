@@ -16,6 +16,7 @@ class User extends Authenticatable
         'github_url', 'linkedin_url', 'website_url',
         'phone', 'country',   // ← add these
         'skills', 'role', 'banned', 'points', 'global_rank',
+        'provider', 'provider_id',
     ];
 
     protected $casts = [
