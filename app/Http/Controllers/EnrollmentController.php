@@ -70,13 +70,18 @@ class EnrollmentController extends Controller
             ], 409);
         }
 
-        // Create new enrollment
-        $enrollment = Enrollment::create([
-            'user_id' => $user->id,
-            'course_id' => $course->id,
-            'progress' => 0,
-            'completed' => false,
-        ]);
+        // Create new enrollment + keep the cached course counter in sync.
+        $enrollment = \Illuminate\Support\Facades\DB::transaction(function () use ($user, $course) {
+            $e = Enrollment::create([
+                'user_id' => $user->id,
+                'course_id' => $course->id,
+                'progress' => 0,
+                'completed' => false,
+            ]);
+            $course->increment('total_enrollments');
+
+            return $e;
+        });
 
         return response()->json([
             'message' => 'تم تسجيلك في الدورة بنجاح',
@@ -141,19 +146,37 @@ class EnrollmentController extends Controller
 
     /**
      * GET /api/courses/{course}/viewers
-     * Get number of users viewing/enrolled in course
+     * List the users enrolled in / watching the course, with completed-lesson counts.
+     * Only the course owner, employers, or admins may view this.
      */
     public function getViewers(Request $request, Course $course)
     {
-        $enrolledCount = Enrollment::where('course_id', $course->id)->count();
-        $completedCount = Enrollment::where('course_id', $course->id)
-            ->where('completed', true)
-            ->count();
+        $user = Auth::user();
+        if ($user->id !== $course->creator_id && ! in_array($user->role, ['employer', 'admin'], true)) {
+            return response()->json(['error' => 'غير مصرح'], 403);
+        }
 
-        return response()->json([
-            'enrolled' => $enrolledCount,
-            'completed' => $completedCount,
-            'inProgress' => $enrolledCount - $completedCount,
-        ]);
+        $lessonIds = $course->lessons()->pluck('id');
+
+        $viewers = Enrollment::where('course_id', $course->id)
+            ->with('user:id,name,avatar_url')
+            ->get()
+            ->map(function (Enrollment $e) use ($lessonIds) {
+                $completed = $lessonIds->isEmpty() ? 0 : LessonProgress::where('user_id', $e->user_id)
+                    ->whereIn('lesson_id', $lessonIds)
+                    ->where('completed', true)
+                    ->count();
+
+                return [
+                    'userId' => $e->user_id,
+                    'userName' => $e->user?->name ?? 'مستخدم',
+                    'userAvatar' => $e->user?->avatar_url,
+                    'completedLessons' => $completed,
+                    'progress' => $e->progress,
+                ];
+            })
+            ->values();
+
+        return response()->json($viewers);
     }
 }

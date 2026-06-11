@@ -90,6 +90,96 @@ class CodeReviewService
         ];
     }
 
+    /**
+     * Diagnostic hint: explains WHERE the student's code went wrong (without giving
+     * the full solution) and returns a Mermaid flowchart of the correct approach.
+     */
+    public function diagnoseHint(string $problem, string $code, string $language = 'General', string $context = 'assignment'): array
+    {
+        $problem = trim($problem);
+        $code = trim($code);
+        if ($problem === '') {
+            return ['success' => false, 'message' => 'يرجى إرسال السؤال.'];
+        }
+
+        $codeBlock = $code !== '' ? "Student's current code:\n```{$language}\n{$code}\n```" : 'The student has not written any code yet.';
+
+        $result = $this->callOllama([
+            ['role' => 'system', 'content' => 'You are an Arabic programming tutor. Reply with ONLY one valid JSON object, no markdown fences. '
+                .'Shape: {"hint":"تلميح بالعربية يوضح أين أخطأ الطالب دون كشف الحل الكامل","mermaid":"flowchart TD\\n A[ابدأ] --> B[خطوة]"}. '
+                .'"hint" = a short Arabic explanation of where the student went wrong (or what to focus on if no code yet), without revealing the full answer. '
+                .'"mermaid" = a valid Mermaid flowchart (flowchart TD ...) describing the CORRECT step-by-step approach. Use simple node labels. Escape newlines as \\n.'],
+            ['role' => 'user', 'content' => "Context: {$context}\nLanguage: {$language}\nProblem:\n{$problem}\n\n{$codeBlock}"],
+        ], 0.3);
+
+        if (! $result['success']) {
+            return [
+                'success' => true,
+                'hint' => 'تلميح: قسّم المطلوب إلى خطوات صغيرة، تتبّع مدخلاتك ومخرجاتك، وتأكد من معالجة الحالات الطرفية.',
+                'mermaid' => "flowchart TD\n  A[اقرأ المطلوب] --> B[قسّمه إلى خطوات]\n  B --> C[نفّذ كل خطوة]\n  C --> D[اختبر بالحالات الطرفية]\n  D --> E[راجع النتيجة]",
+            ];
+        }
+
+        $json = $this->extractJson($result['content']);
+        $hint = is_array($json) ? trim((string) ($json['hint'] ?? '')) : '';
+        $mermaid = is_array($json) ? trim((string) ($json['mermaid'] ?? '')) : '';
+
+        // Normalise escaped newlines the model may emit literally.
+        $mermaid = str_replace(['\\n', '\\t'], ["\n", '  '], $mermaid);
+
+        if ($hint === '') {
+            $hint = 'تلميح: راجع المطلوب خطوة بخطوة وتأكد من معالجة كل الحالات.';
+        }
+        if (! str_contains($mermaid, 'flowchart') && ! str_contains($mermaid, 'graph')) {
+            $mermaid = "flowchart TD\n  A[اقرأ المطلوب] --> B[خطّط للحل]\n  B --> C[نفّذ خطوة بخطوة]\n  C --> D[اختبر وراجع]";
+        }
+
+        return ['success' => true, 'hint' => $hint, 'mermaid' => $mermaid];
+    }
+
+    /**
+     * Use a vision model (Ollama Cloud) to transcribe code from an uploaded image.
+     * Returns the extracted code as plain text, or null on failure.
+     */
+    public function extractCodeFromImage(string $base64Image): ?string
+    {
+        // Strip a data URL prefix if present — Ollama wants raw base64.
+        if (str_contains($base64Image, ',')) {
+            $base64Image = substr($base64Image, strpos($base64Image, ',') + 1);
+        }
+        $base64Image = trim($base64Image);
+        if ($base64Image === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(config('ai.vision_timeout'))
+                ->connectTimeout(10)
+                ->post(rtrim(config('ai.ollama_host'), '/').'/api/chat', [
+                    'model' => config('ai.vision_model'),
+                    'stream' => false,
+                    'keep_alive' => -1,
+                    'messages' => [[
+                        'role' => 'user',
+                        'content' => 'Transcribe ALL the code shown in this image exactly as written. '
+                            .'Output ONLY the raw code, no explanation, no markdown fences.',
+                        'images' => [$base64Image],
+                    ]],
+                    'options' => ['temperature' => 0],
+                ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $content = trim((string) data_get($response->json(), 'message.content', ''));
+
+            return $content !== '' ? $this->extractCode($content) : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     public function fix(string $code, string $language, string $problem): array
     {
         $problem = trim($problem);

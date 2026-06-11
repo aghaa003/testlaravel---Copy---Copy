@@ -7,30 +7,31 @@ use App\Models\ChallengeSubmission;
 use App\Models\Course;
 use App\Models\Repository;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class StatsController extends Controller
 {
     public function platform()
     {
-        $totalUsers = User::count();
-        $totalCourses = Course::count();
-        $totalChallenges = Challenge::count();
-        $totalRepositories = Repository::where('visibility', 'public')->count();
-        $totalSubmissions = ChallengeSubmission::count();
-        $successful = ChallengeSubmission::where('success', true)->count();
+        // Served from cache (warmed hourly by academy:refresh-derived-data); falls
+        // back to a live 5-minute computation if the cache is cold.
+        $stats = Cache::remember('stats.platform', now()->addMinutes(5), function () {
+            $totalSubmissions = ChallengeSubmission::count();
+            $successful = ChallengeSubmission::where('success', true)->count();
 
-        return response()->json([
-            'totalUsers' => $totalUsers,
-            'totalCourses' => $totalCourses,
-            'totalChallenges' => $totalChallenges,
-            'totalRepositories' => $totalRepositories,
-            'totalSubmissions' => $totalSubmissions,
-            'totalChallengesSolved' => $successful,
-            'successRate' => $totalSubmissions > 0
-                                    ? ($successful / $totalSubmissions) * 100
-                                    : 0,
-        ]);
+            return [
+                'totalUsers' => User::count(),
+                'totalCourses' => Course::count(),
+                'totalChallenges' => Challenge::count(),
+                'totalRepositories' => Repository::where('visibility', 'public')->count(),
+                'totalSubmissions' => $totalSubmissions,
+                'totalChallengesSolved' => $successful,
+                'successRate' => $totalSubmissions > 0 ? ($successful / $totalSubmissions) * 100 : 0,
+            ];
+        });
+
+        return response()->json($stats);
     }
 
     public function userStats(User $user)

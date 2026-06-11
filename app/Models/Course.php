@@ -11,7 +11,11 @@ class Course extends Model
     protected $fillable = [
         'title', 'description', 'thumbnail_url', 'category',
         'level', 'language', 'creator_id', 'average_rating',
-        'total_reviews', 'total_lessons', 'total_enrollments',
+        'total_reviews', 'total_lessons', 'total_enrollments', 'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function creator(): BelongsTo

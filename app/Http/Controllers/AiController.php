@@ -41,26 +41,42 @@ class AiController extends Controller
             'language' => 'nullable|string|max:100',
             'message' => 'nullable|string|max:2000',
             'user_message' => 'nullable|string|max:2000',
+            'image' => 'nullable|string|max:20000000', // base64 image of code (optional)
         ]);
 
         $mode = $validated['mode'] ?? 'hint';
         $challenge = ! empty($validated['challenge_id']) ? Challenge::find($validated['challenge_id']) : null;
         $problem = $validated['question'] ?? $challenge?->description ?? $validated['message'] ?? '';
         $language = $validated['language'] ?? $challenge?->category ?? 'General';
+        $code = $this->resolveCode($validated, $reviewer);
 
         if ($mode === 'verify') {
-            return response()->json(
-                $reviewer->review($validated['code'] ?? '', $language, $problem, 'challenge')
-            );
+            return response()->json($reviewer->review($code, $language, $problem, 'challenge'));
         }
 
         if ($mode === 'fix' || $mode === 'solution') {
-            return response()->json(
-                $reviewer->fix($validated['code'] ?? '', $language, $problem)
-            );
+            return response()->json($reviewer->fix($code, $language, $problem));
         }
 
-        return response()->json($reviewer->hint($problem, 'challenge'));
+        // hint → diagnostic hint (where they went wrong) + Mermaid flowchart
+        return response()->json($reviewer->diagnoseHint($problem, $code, $language, 'challenge'));
+    }
+
+    /**
+     * If an image was uploaded, transcribe it to code via the vision model and
+     * prefer that; otherwise use the submitted text code.
+     */
+    private function resolveCode(array $validated, CodeReviewService $reviewer): string
+    {
+        $code = $validated['code'] ?? '';
+        if (! empty($validated['image'])) {
+            $fromImage = $reviewer->extractCodeFromImage($validated['image']);
+            if ($fromImage) {
+                $code = trim($code) !== '' ? $code."\n".$fromImage : $fromImage;
+            }
+        }
+
+        return $code;
     }
 
     public function projects(Request $request, CodeReviewService $reviewer)
@@ -72,25 +88,23 @@ class AiController extends Controller
             'code' => 'nullable|string|max:100000',
             'language' => 'nullable|string|max:100',
             'message' => 'nullable|string|max:2000',
+            'image' => 'nullable|string|max:20000000',
         ]);
 
-        $mode = $validated['mode'] ?? (! empty($validated['code']) ? 'verify' : 'hint');
         $assignment = ! empty($validated['assignment_id']) ? Assignment::find($validated['assignment_id']) : null;
         $problem = $validated['question'] ?? $assignment?->question ?? $validated['message'] ?? '';
         $language = $validated['language'] ?? $assignment?->language ?? 'General';
+        $code = $this->resolveCode($validated, $reviewer);
+        $mode = $validated['mode'] ?? ($code !== '' ? 'verify' : 'hint');
 
         if ($mode === 'verify') {
-            return response()->json(
-                $reviewer->review($validated['code'] ?? '', $language, $problem, 'project')
-            );
+            return response()->json($reviewer->review($code, $language, $problem, 'project'));
         }
 
         if ($mode === 'fix') {
-            return response()->json(
-                $reviewer->fix($validated['code'] ?? '', $language, $problem)
-            );
+            return response()->json($reviewer->fix($code, $language, $problem));
         }
 
-        return response()->json($reviewer->hint($problem, 'project'));
+        return response()->json($reviewer->diagnoseHint($problem, $code, $language, 'project'));
     }
 }

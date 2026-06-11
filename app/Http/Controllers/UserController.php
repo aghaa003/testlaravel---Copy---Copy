@@ -14,17 +14,29 @@ class UserController extends Controller
     {
         // Role (admin) enforced by `role:` middleware in routes/api.php.
 
-        $query = User::query();
+        // Include soft-deleted users so an admin can see + restore a mistakenly
+        // deleted account. Each row carries `deleted_at` (null if active).
+        $query = User::withTrashed();
 
         if ($request->has('role')) {
             $query->where('role', $request->role);
+        }
+
+        if ($search = trim((string) $request->input('search', ''))) {
+            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
+            $query->where(function ($q) use ($like) {
+                $q->where('name', 'like', $like)
+                    ->orWhere('username', 'like', $like)
+                    ->orWhere('email', 'like', $like);
+            });
         }
 
         $limit = $request->input('limit', 10);
         $offset = $request->input('offset', 0);
 
         $total = $query->count();
-        $users = $query->skip($offset)->take($limit)->get();
+        $users = $query->orderByRaw('deleted_at IS NOT NULL') // active first
+            ->skip($offset)->take($limit)->get();
 
         return response()->json([
             'users' => $users,

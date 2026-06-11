@@ -105,9 +105,17 @@ class LessonController extends Controller
     public function deleteComment(Request $request, Lesson $lesson, LessonComment $comment)
     {
         $user = Auth::user();
-        if ($comment->user_id !== $user->id && $user->role !== 'admin') {
+
+        // Allowed to delete: the comment author, the course creator (moderating
+        // their own course), employers, or admins.
+        $isAuthor = $comment->user_id === $user->id;
+        $isCourseOwner = $lesson->course?->creator_id === $user->id;
+        $isStaff = in_array($user->role, ['employer', 'admin'], true);
+
+        if (! $isAuthor && ! $isCourseOwner && ! $isStaff) {
             return response()->json(['message' => 'غير مصرح'], 403);
         }
+
         $comment->delete();
 
         return response()->json(['message' => 'تم حذف التعليق']);

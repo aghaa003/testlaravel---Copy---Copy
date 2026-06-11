@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AiController;
 use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\AuthController;
@@ -116,6 +117,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/challenges/{challenge}/submit', [ChallengeController::class, 'submit']);
     Route::put('/challenges/{challenge}', [ChallengeController::class, 'updateChallenge']);
     Route::delete('/challenges/{challenge}', [ChallengeController::class, 'deleteChallenge']);
+    Route::post('/challenges/{challenge}/toggle-active', [ChallengeController::class, 'toggleActive']);
 
     // Courses — review CRUD + ownership-gated mutations (Policy inside controller)
     Route::post('/courses/{course}/reviews', [CourseController::class, 'storeReview']);
@@ -123,6 +125,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/courses/{course}', [CourseController::class, 'updateCourse']);
     Route::delete('/courses/{course}', [CourseController::class, 'destroyCourse']);
     Route::delete('/courses/{course}/lessons/{lesson}', [CourseController::class, 'deleteLesson']);
+    Route::match(['put', 'patch'], '/courses/{course}/lessons/{lesson}', [CourseController::class, 'updateLesson']);
+    Route::post('/courses/{course}/toggle-active', [CourseController::class, 'toggleActive']);
 
     // Assignment submission (any authenticated user)
     Route::post('/assignments/submit', [AssignmentController::class, 'submit']);
@@ -156,6 +160,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/assignments', [AssignmentController::class, 'store']);
         Route::put('/assignments/{assignment}', [AssignmentController::class, 'update']);
         Route::delete('/assignments/{assignment}', [AssignmentController::class, 'destroy']);
+        Route::post('/assignments/{assignment}/toggle-active', [AssignmentController::class, 'toggleActive']);
 
         // Examples
         Route::post('/examples', [ExampleController::class, 'store']);
@@ -198,7 +203,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/admin/comments/{id}', [AdminController::class, 'deleteCommentById'])->whereNumber('id');
         Route::delete('/admin/comments/{type}/{id}', [AdminController::class, 'deleteComment'])
             ->where('type', 'lesson|community')->whereNumber('id');
-        Route::post('/admin/users/{user}/ban', [AdminController::class, 'banUser']);
-        Route::post('/admin/users/{user}/unban', [AdminController::class, 'unbanUser']);
+
+        // Full user management (admin-only — employers cannot reach these)
+        Route::get('/admin/users/{user}', [AdminUserController::class, 'show']);
+        Route::match(['put', 'patch'], '/admin/users/{user}', [AdminUserController::class, 'updateUser']);
+        Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy']);
+        // {user} resolves soft-deleted rows here so a mistaken deletion can be undone.
+        Route::post('/admin/users/{user}/restore', [AdminUserController::class, 'restore'])->withTrashed();
+        Route::post('/admin/users/{user}/password', [AdminUserController::class, 'setPassword']);
+        Route::post('/admin/users/{user}/ban', [AdminUserController::class, 'setBan']);
+        Route::post('/admin/users/{user}/disable', [AdminUserController::class, 'setDisabled']);
+        Route::post('/admin/users/{user}/score', [AdminUserController::class, 'setScore']);
+        Route::post('/admin/users/{user}/role', [AdminUserController::class, 'setRole']);
+
+        // Grade / edit / delete a user's challenge & assignment answers
+        Route::post('/admin/users/{user}/challenges/{challenge}/grade', [AdminUserController::class, 'gradeChallenge']);
+        Route::delete('/admin/challenge-submissions/{submission}', [AdminUserController::class, 'deleteChallengeSubmission']);
+        Route::post('/admin/assignment-submissions/{submission}/grade', [AdminUserController::class, 'gradeAssignment']);
+        Route::delete('/admin/assignment-submissions/{submission}', [AdminUserController::class, 'deleteAssignmentSubmission']);
     });
 });

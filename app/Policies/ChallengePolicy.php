@@ -21,4 +21,12 @@ class ChallengePolicy
     {
         return $user->id === $challenge->creator_id;
     }
+
+    /**
+     * Disable/enable: the creator (own challenge) OR any employer (admins via before()).
+     */
+    public function toggleActive(User $user, Challenge $challenge): bool
+    {
+        return $user->id === $challenge->creator_id || $user->role === 'employer';
+    }
 }

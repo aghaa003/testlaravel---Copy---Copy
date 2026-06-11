@@ -15,6 +15,9 @@ class CourseController extends Controller
     {
         $query = Course::query()->with('creator');
 
+        // Hide disabled courses from the public (creator sees own; employer/admin all).
+        $this->applyActiveScope($query, $request, 'creator_id');
+
         // تصفية حسب الفئة (category) إذا تم تمريرها
         if ($request->has('category')) {
             $query->where('category', $request->category);
@@ -138,7 +141,8 @@ class CourseController extends Controller
     // storeLesson() — fix bug 10: accept camelCase fields
     public function storeLesson(Request $request, Course $course)
     {
-        // Role (creator/employer/admin) enforced by `role:` middleware in routes/api.php.
+        // Course owner / employer / admin only (creators can't add to others' courses).
+        $this->authorize('manageContent', $course);
 
         $request->validate([
             'title' => 'required|string|max:255',
@@ -270,13 +274,59 @@ class CourseController extends Controller
         return response()->json($this->formatCourse($course));
     }
 
-    // 10. حذف درس (فقط منشئ الدورة أو admin)
-    public function deleteLesson(Request $request, Lesson $lesson)
+    // Disable/enable a course (creator-owned, or employer/admin)
+    public function toggleActive(Request $request, Course $course)
     {
-        $course = $lesson->course;
+        $this->authorize('toggleActive', $course);
+        $course->update(['is_active' => ! $course->is_active]);
 
-        // Managing a course's lessons requires owner-or-admin on the parent course.
-        $this->authorize('update', $course);
+        return response()->json(['success' => true, 'is_active' => $course->is_active]);
+    }
+
+    // Edit a lesson (course owner / employer / admin)
+    public function updateLesson(Request $request, Course $course, Lesson $lesson)
+    {
+        $this->authorize('manageContent', $course);
+
+        $validated = $request->validate([
+            'title' => 'sometimes|string|max:255',
+            'description' => 'sometimes|nullable|string',
+            'video_url' => 'sometimes|nullable|string',
+            'videoUrl' => 'sometimes|nullable|string',
+            'pdf_url' => 'sometimes|nullable|string',
+            'pdfUrl' => 'sometimes|nullable|string',
+            'attachment_url' => 'sometimes|nullable|string',
+            'attachmentUrl' => 'sometimes|nullable|string',
+            'attachment_name' => 'sometimes|nullable|string',
+            'attachmentName' => 'sometimes|nullable|string',
+            'duration' => 'sometimes|nullable|integer',
+            'order_num' => 'sometimes|nullable|integer',
+            'order' => 'sometimes|nullable|integer',
+        ]);
+
+        // Normalise camelCase → snake_case.
+        $map = [
+            'videoUrl' => 'video_url', 'pdfUrl' => 'pdf_url',
+            'attachmentUrl' => 'attachment_url', 'attachmentName' => 'attachment_name',
+            'order' => 'order_num',
+        ];
+        foreach ($map as $camel => $snake) {
+            if (array_key_exists($camel, $validated)) {
+                $validated[$snake] = $validated[$camel];
+                unset($validated[$camel]);
+            }
+        }
+
+        $lesson->update($validated);
+
+        return response()->json($lesson->fresh());
+    }
+
+    // 10. حذف درس (منشئ الدورة أو employer أو admin)
+    public function deleteLesson(Request $request, Course $course, Lesson $lesson)
+    {
+        // Managing a course's lessons requires owner / employer / admin.
+        $this->authorize('manageContent', $course);
 
         $lesson->delete();
         $course->decrement('total_lessons');

@@ -80,13 +80,13 @@ class AuthController extends Controller
 
         $user = Auth::user();
 
-        if ($user->banned) {
+        if ($user->banned || $user->disabled) {
             Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
             throw ValidationException::withMessages([
-                'email' => ['تم حظر هذا الحساب.'],
+                'email' => [$user->banned ? 'تم حظر هذا الحساب.' : 'تم تعطيل هذا الحساب.'],
             ]);
         }
 

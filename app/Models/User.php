@@ -4,18 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable
 {
-    use HasUuids;
+    use HasUuids, SoftDeletes;
 
     protected $fillable = [
         'id', 'name', 'username', 'email', 'password',
         'avatar_url', 'bio',
         'github_url', 'linkedin_url', 'website_url',
         'phone', 'country',   // ← add these
-        'skills', 'role', 'banned', 'points',
+        'skills', 'role', 'banned', 'disabled', 'points',
         'provider', 'provider_id',
     ];
 
@@ -26,6 +27,7 @@ class User extends Authenticatable
     protected $casts = [
         'skills' => 'array',
         'banned' => 'boolean',
+        'disabled' => 'boolean',
     ];
 
     public function courses(): HasMany

@@ -27,4 +27,21 @@ class CoursePolicy
     {
         return $user->id === $course->creator_id;
     }
+
+    /**
+     * Disable/enable: the creator (own course) OR any employer (admins via before()).
+     */
+    public function toggleActive(User $user, Course $course): bool
+    {
+        return $user->id === $course->creator_id || $user->role === 'employer';
+    }
+
+    /**
+     * Manage a course's content (lessons CRUD): the course creator OR any employer
+     * (admins bypass via before()).
+     */
+    public function manageContent(User $user, Course $course): bool
+    {
+        return $user->id === $course->creator_id || $user->role === 'employer';
+    }
 }

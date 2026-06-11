@@ -234,30 +234,6 @@ class AdminController extends Controller
         ]);
     }
 
-    public function banUser(Request $request, User $user)
-    {
-        $user->update(['banned' => true]);
-
-        return response()->json([
-            'success' => true,
-            'banned' => true,
-            'message' => 'تم حظر المستخدم',
-            'user' => $user,
-        ]);
-    }
-
-    public function unbanUser(Request $request, User $user)
-    {
-        $user->update(['banned' => false]);
-
-        return response()->json([
-            'success' => true,
-            'banned' => false,
-            'message' => 'تم إلغاء حظر المستخدم',
-            'user' => $user,
-        ]);
-    }
-
     private function formatLessonComment(LessonComment $c): array
     {
         return [

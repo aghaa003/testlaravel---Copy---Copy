@@ -8,6 +8,7 @@ use App\Models\CommunityPostLike;
 use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class CommunityController extends Controller
 {
@@ -85,16 +86,20 @@ class CommunityController extends Controller
     public function togglePostLike(Request $request, CommunityPost $post)
     {
         $user = Auth::user();
-        $existing = CommunityPostLike::where('user_id', $user->id)->where('post_id', $post->id)->first();
 
-        if ($existing) {
-            $existing->delete();
-            $post->decrement('likes_count');
-            $liked = false;
-        } else {
+        // Like row + counter must move together, or the cached count drifts.
+        $liked = DB::transaction(function () use ($user, $post) {
+            $existing = CommunityPostLike::where('user_id', $user->id)->where('post_id', $post->id)->lockForUpdate()->first();
+
+            if ($existing) {
+                $existing->delete();
+                $post->decrement('likes_count');
+
+                return false;
+            }
+
             CommunityPostLike::create(['user_id' => $user->id, 'post_id' => $post->id]);
             $post->increment('likes_count');
-            $liked = true;
 
             if ($post->user_id !== $user->id) {
                 Notification::create([
@@ -104,7 +109,9 @@ class CommunityController extends Controller
                     'entity_title' => $post->title, 'message' => "{$user->name} أعجب بمنشورك",
                 ]);
             }
-        }
+
+            return true;
+        });
 
         return response()->json(['liked' => $liked, 'likesCount' => $post->fresh()->likes_count]);
     }

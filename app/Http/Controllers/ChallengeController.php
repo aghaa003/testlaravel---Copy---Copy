@@ -17,6 +17,10 @@ class ChallengeController extends Controller
     {
         $query = Challenge::query();
 
+        // Hide disabled challenges from the public. Creators may see their own
+        // disabled ones; employers/admins see all when include_inactive=1.
+        $this->applyActiveScope($query, $request, 'creator_id');
+
         // التصفية حسب الصعوبة (easy, medium, hard)
         if ($request->has('difficulty')) {
             $query->where('difficulty', $request->difficulty);
@@ -81,9 +85,16 @@ class ChallengeController extends Controller
             'solution' => 'nullable|string|max:100000',
             'code' => 'nullable|string|max:100000',
             'language' => 'nullable|string|max:100',
+            'image' => 'nullable|string|max:20000000', // base64 image of the answer (optional)
         ]);
 
         $solution = $validated['solution'] ?? $validated['code'] ?? '';
+        if (! empty($validated['image'])) {
+            $fromImage = $reviewer->extractCodeFromImage($validated['image']);
+            if ($fromImage) {
+                $solution = trim($solution) !== '' ? $solution."\n".$fromImage : $fromImage;
+            }
+        }
         if (trim($solution) === '') {
             return response()->json([
                 'success' => false,
@@ -96,9 +107,17 @@ class ChallengeController extends Controller
         $language = $validated['language'] ?? $challenge->category ?? 'General';
         $review = $reviewer->review($solution, $language, $challenge->description, 'challenge');
         $isSuccess = ($review['verdict'] ?? 'no') === 'yes' && (int) ($review['score'] ?? 0) >= 60;
-        $pointsEarned = $isSuccess ? $challenge->points : 0;
 
-        $submission = DB::transaction(function () use ($challenge, $userId, $solution, $language, $review, $isSuccess, $pointsEarned) {
+        $submission = DB::transaction(function () use ($challenge, $userId, $solution, $language, $review, $isSuccess) {
+            // Award points only the FIRST time a user solves a challenge — prevents
+            // farming points by resubmitting an already-solved challenge.
+            $alreadySolved = ChallengeSubmission::where('user_id', $userId)
+                ->where('challenge_id', $challenge->id)
+                ->where('success', true)
+                ->lockForUpdate()
+                ->exists();
+            $pointsEarned = ($isSuccess && ! $alreadySolved) ? $challenge->points : 0;
+
             $sub = ChallengeSubmission::create([
                 'user_id' => $userId,
                 'challenge_id' => $challenge->id,
@@ -114,9 +133,9 @@ class ChallengeController extends Controller
 
             $challenge->increment('total_submissions');
             $successCount = $challenge->submissions()->where('success', true)->count();
-            $challenge->update(['success_rate' => ($successCount / $challenge->total_submissions) * 100]);
+            $challenge->update(['success_rate' => ($successCount / max($challenge->total_submissions, 1)) * 100]);
 
-            if ($isSuccess) {
+            if ($pointsEarned > 0) {
                 User::where('id', $userId)->increment('points', $pointsEarned);
             }
 
@@ -162,6 +181,15 @@ class ChallengeController extends Controller
         $challenge->update($validated);
 
         return response()->json($challenge);
+    }
+
+    // Disable/enable a challenge (creator-owned, or employer/admin)
+    public function toggleActive(Request $request, Challenge $challenge)
+    {
+        $this->authorize('toggleActive', $challenge);
+        $challenge->update(['is_active' => ! $challenge->is_active]);
+
+        return response()->json(['success' => true, 'is_active' => $challenge->is_active]);
     }
 
     // GET /api/challenges/my-submissions

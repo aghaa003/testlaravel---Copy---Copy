@@ -23,6 +23,11 @@ class Challenge extends Model
         'points',
         'total_submissions',
         'success_rate',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function creator()

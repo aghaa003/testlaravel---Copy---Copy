@@ -116,6 +116,14 @@ class AssignmentController extends Controller
         return response()->json($assignment->load('course:id,title,category,language'));
     }
 
+    // Disable/enable an assignment (employer/admin via route middleware)
+    public function toggleActive(Request $request, Assignment $assignment)
+    {
+        $assignment->update(['is_active' => ! $assignment->is_active]);
+
+        return response()->json(['success' => true, 'is_active' => $assignment->is_active]);
+    }
+
     public function destroy(Request $request, Assignment $assignment)
     {
         // Role (employer/admin) enforced by `role:` middleware in routes/api.php.
