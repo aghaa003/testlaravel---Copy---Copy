@@ -7,6 +7,7 @@ use App\Models\Lesson;
 use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class CourseController extends Controller
 {
@@ -104,6 +105,12 @@ class CourseController extends Controller
         }]);
 
         $data = $this->formatCourse($course);
+
+        // The authenticated user's own rating for this course (null if none / guest).
+        $data['myRating'] = Auth::check()
+            ? optional($course->reviews()->where('user_id', Auth::id())->first())->rating
+            : null;
+
         $data['lessons'] = $course->lessons->map(function (Lesson $lesson) {
             return [
                 'id' => $lesson->id,
@@ -184,19 +191,29 @@ class CourseController extends Controller
             'comment' => 'nullable|string',
         ]);
 
-        $validated['user_id'] = Auth::id();
+        $userId = Auth::id();
 
-        $review = $course->reviews()->create($validated);
+        $review = DB::transaction(function () use ($course, $userId, $validated) {
+            // One review per user per course — update their existing one if present.
+            $review = $course->reviews()->updateOrCreate(
+                ['user_id' => $userId],
+                ['rating' => $validated['rating'], 'comment' => $validated['comment'] ?? null],
+            );
 
-        $newTotal = $course->total_reviews + 1;
-        $newAverage = (($course->average_rating * $course->total_reviews) + $validated['rating']) / $newTotal;
+            // Recompute average + count from source so it's always correct (handles edits).
+            $course->update([
+                'total_reviews' => $course->reviews()->count(),
+                'average_rating' => round((float) $course->reviews()->avg('rating'), 2),
+            ]);
 
-        $course->update([
-            'total_reviews' => $newTotal,
-            'average_rating' => round($newAverage, 2),
-        ]);
+            return $review;
+        });
 
-        return response()->json($review->load('user'), 201);
+        return response()->json([
+            'review' => $review->load('user'),
+            'averageRating' => (float) $course->fresh()->average_rating,
+            'totalReviews' => $course->fresh()->total_reviews,
+        ], 201);
     }
 
     /**
