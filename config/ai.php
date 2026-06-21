@@ -6,8 +6,9 @@ return [
     'timeout' => (int) env('OLLAMA_TIMEOUT', 45),
 
     // Vision-capable model used to read code from an uploaded image/screenshot.
-    // Use an Ollama Cloud free-tier vision model (run `ollama signin` once), e.g.
-    // qwen3-vl:* / llama3.2-vision, or a local one if pulled.
-    'vision_model' => env('OLLAMA_VISION_MODEL', 'qwen2.5vl:7b'),
+    // Runs on Ollama Cloud (requires `ollama signin` once). qwen3-vl:235b-cloud
+    // was retired and the other vision-capable cloud models (qwen3.5, kimi-k2.5/2.6)
+    // require a paid subscription — minimax-m3:cloud is free and vision-capable.
+    'vision_model' => env('OLLAMA_VISION_MODEL', 'minimax-m3:cloud'),
     'vision_timeout' => (int) env('OLLAMA_VISION_TIMEOUT', 90),
 ];
