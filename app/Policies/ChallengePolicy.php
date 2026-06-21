@@ -7,9 +7,13 @@ use App\Models\User;
 
 class ChallengePolicy
 {
+    /**
+     * Employers get the same blanket access as admins for challenges — they
+     * are co-managers of this content, not just allowed to toggle visibility.
+     */
     public function before(User $user, string $ability): ?bool
     {
-        return $user->role === 'admin' ? true : null;
+        return in_array($user->role, ['admin', 'employer'], true) ? true : null;
     }
 
     public function update(User $user, Challenge $challenge): bool
@@ -22,11 +26,8 @@ class ChallengePolicy
         return $user->id === $challenge->creator_id;
     }
 
-    /**
-     * Disable/enable: the creator (own challenge) OR any employer (admins via before()).
-     */
     public function toggleActive(User $user, Challenge $challenge): bool
     {
-        return $user->id === $challenge->creator_id || $user->role === 'employer';
+        return $user->id === $challenge->creator_id;
     }
 }

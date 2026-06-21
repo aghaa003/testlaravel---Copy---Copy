@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Repository extends Model
 {
@@ -26,12 +27,36 @@ class Repository extends Model
 
     protected $appends = [
         'isPublic', 'codeFilesUrls', 'pdfFilesUrls', 'coverImageUrl',
-        'liveDemoUrl', 'repoUrl', 'likes',
+        'liveDemoUrl', 'repoUrl', 'likes', 'averageRating', 'ratingsCount',
     ];
 
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function ratings(): HasMany
+    {
+        return $this->hasMany(RepositoryRating::class);
+    }
+
+    /** Populated via withAvg('ratings', 'rating') where available; falls back to a live query otherwise. */
+    public function getAverageRatingAttribute(): float
+    {
+        if (array_key_exists('ratings_avg_rating', $this->attributes)) {
+            return round((float) $this->attributes['ratings_avg_rating'], 1);
+        }
+
+        return round((float) $this->ratings()->avg('rating'), 1);
+    }
+
+    public function getRatingsCountAttribute(): int
+    {
+        if (array_key_exists('ratings_count', $this->attributes)) {
+            return (int) $this->attributes['ratings_count'];
+        }
+
+        return $this->ratings()->count();
     }
 
     public function getIsPublicAttribute(): bool

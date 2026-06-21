@@ -102,13 +102,24 @@ class CodeReviewService
             return ['success' => false, 'message' => 'يرجى إرسال السؤال.'];
         }
 
-        $codeBlock = $code !== '' ? "Student's current code:\n```{$language}\n{$code}\n```" : 'The student has not written any code yet.';
+        $hasCode = $code !== '';
+        $codeBlock = $hasCode ? "Student's current code:\n```{$language}\n{$code}\n```" : 'The student has not written any code yet.';
+
+        // Two distinct diagram modes:
+        //  - "mistake": code was submitted -> the flowchart marks the exact step
+        //    where the student's logic deviates from the correct approach.
+        //  - "solution": no code yet -> the flowchart is simply the correct
+        //    step-by-step approach, same as before.
+        $diagramType = $hasCode ? 'mistake' : 'solution';
+        $mermaidInstruction = $hasCode
+            ? '"mermaid" = a valid Mermaid flowchart (flowchart TD ...) of the CORRECT step-by-step approach, but mark the single node where the student\'s submitted code first deviates from this approach by prefixing that node\'s label with "❌ " so it stands out (e.g. C["❌ خطوة فيها الخطأ"]). Only one node should have this prefix.'
+            : '"mermaid" = a valid Mermaid flowchart (flowchart TD ...) describing the CORRECT step-by-step approach. Use simple node labels.';
 
         $result = $this->callOllama([
             ['role' => 'system', 'content' => 'You are an Arabic programming tutor. Reply with ONLY one valid JSON object, no markdown fences. '
                 .'Shape: {"hint":"تلميح بالعربية يوضح أين أخطأ الطالب دون كشف الحل الكامل","mermaid":"flowchart TD\\n A[ابدأ] --> B[خطوة]"}. '
                 .'"hint" = a short Arabic explanation of where the student went wrong (or what to focus on if no code yet), without revealing the full answer. '
-                .'"mermaid" = a valid Mermaid flowchart (flowchart TD ...) describing the CORRECT step-by-step approach. Use simple node labels. Escape newlines as \\n.'],
+                .$mermaidInstruction.' Escape newlines as \\n.'],
             ['role' => 'user', 'content' => "Context: {$context}\nLanguage: {$language}\nProblem:\n{$problem}\n\n{$codeBlock}"],
         ], 0.3);
 
@@ -117,6 +128,7 @@ class CodeReviewService
                 'success' => true,
                 'hint' => 'تلميح: قسّم المطلوب إلى خطوات صغيرة، تتبّع مدخلاتك ومخرجاتك، وتأكد من معالجة الحالات الطرفية.',
                 'mermaid' => "flowchart TD\n  A[اقرأ المطلوب] --> B[قسّمه إلى خطوات]\n  B --> C[نفّذ كل خطوة]\n  C --> D[اختبر بالحالات الطرفية]\n  D --> E[راجع النتيجة]",
+                'diagramType' => 'solution',
             ];
         }
 
@@ -132,9 +144,10 @@ class CodeReviewService
         }
         if (! str_contains($mermaid, 'flowchart') && ! str_contains($mermaid, 'graph')) {
             $mermaid = "flowchart TD\n  A[اقرأ المطلوب] --> B[خطّط للحل]\n  B --> C[نفّذ خطوة بخطوة]\n  C --> D[اختبر وراجع]";
+            $diagramType = 'solution';
         }
 
-        return ['success' => true, 'hint' => $hint, 'mermaid' => $mermaid];
+        return ['success' => true, 'hint' => $hint, 'mermaid' => $mermaid, 'diagramType' => $diagramType];
     }
 
     /**
@@ -187,12 +200,20 @@ class CodeReviewService
             return ['success' => false, 'message' => 'يرجى إرسال السؤال.'];
         }
 
-        $prompt = trim($code) !== ''
-            ? "Fix this {$language} code so it solves the problem. Return code only.\n\nProblem:\n{$problem}\n\nCode:\n{$code}"
+        $hasCode = trim($code) !== '';
+        $prompt = $hasCode
+            ? "Here is the student's {$language} code attempt at the problem below. Make the MINIMAL changes "
+                ."necessary to correct it so it solves the problem — keep their original structure, variable "
+                ."names, and style wherever possible. Do not rewrite it from scratch and do not introduce a "
+                ."different approach than the one they used, unless their approach cannot possibly work. "
+                ."Return code only.\n\nProblem:\n{$problem}\n\nStudent's code:\n{$code}"
             : "Write a complete {$language} solution for this problem. Return code only.\n\nProblem:\n{$problem}";
 
         $result = $this->callOllama([
-            ['role' => 'system', 'content' => 'You are a senior coding assistant. Return only code. No explanation.'],
+            ['role' => 'system', 'content' => $hasCode
+                ? 'You are a senior coding assistant editing a student\'s existing code. You correct mistakes '
+                    .'in place; you do not replace their solution with your own from scratch. Return only code. No explanation.'
+                : 'You are a senior coding assistant. Return only code. No explanation.'],
             ['role' => 'user', 'content' => $prompt],
         ], 0.15);
 

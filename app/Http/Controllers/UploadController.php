@@ -24,8 +24,18 @@ class UploadController extends Controller
         }
 
         $request->validate([
-            // Allowlist safe types only — block svg/html/php and other active content.
-            $fieldName => 'required|file|max:102400|mimes:jpg,jpeg,png,gif,webp,pdf,mp4,webm,mov,zip,txt,doc,docx,ppt,pptx,xls,xlsx',
+            // ✅ Fixed: "mimes:" rejects most code-file extensions outright because
+            // Laravel's internal extension→MIME map has no entry for .py/.cpp/.cs/
+            // .java/etc, so every project-solution upload using these extensions
+            // failed validation before reaching this controller at all. "extensions:"
+            // checks the file's extension directly instead, which works for any
+            // extension we explicitly allow here. Still blocks svg/html/php/exe and
+            // other active-content types not in this list.
+            // .html is deliberately excluded: files here are served as static
+            // assets from the same origin, so an uploaded .html file would run
+            // as same-origin script if opened — a stored-XSS vector. .css is
+            // safe (declarative, no script execution).
+            $fieldName => 'required|file|max:102400|extensions:jpg,jpeg,png,gif,webp,pdf,mp4,webm,mov,zip,rar,gz,txt,doc,docx,ppt,pptx,xls,xlsx,py,js,ts,cpp,c,cs,java,css',
         ]);
 
         $file = $request->file($fieldName);
@@ -66,7 +76,7 @@ class UploadController extends Controller
             return response()->json(['message' => 'لم يتم إرسال أي ملفات'], 422);
         }
 
-        $allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'mp4', 'webm', 'mov', 'zip', 'txt', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'];
+        $allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'mp4', 'webm', 'mov', 'zip', 'rar', 'gz', 'txt', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'py', 'js', 'ts', 'cpp', 'c', 'cs', 'java', 'css'];
 
         $urls = [];
         foreach ($files as $file) {

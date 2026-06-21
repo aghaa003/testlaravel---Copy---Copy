@@ -18,10 +18,20 @@ class HomeReviewController extends Controller
 
         $reviews = Review::whereNull('course_id')
             ->where('status', 'approved')
-            ->with('user')
             ->orderBy('created_at', 'desc')
             ->take($limit)
-            ->get();
+            ->get()
+            ->map(function ($review) {
+                return [
+                    'id' => $review->id,
+                    'rating' => $review->rating,
+                    'comment' => $review->comment,
+                    // Show whatever name the reviewer typed; if they left it blank,
+                    // show "anonymous" rather than leaking their real account name.
+                    'reviewerName' => trim((string) $review->reviewer_name) !== '' ? $review->reviewer_name : 'مستخدم مجهول',
+                    'createdAt' => $review->created_at,
+                ];
+            });
 
         return response()->json([
             'reviews' => $reviews,
@@ -43,12 +53,17 @@ class HomeReviewController extends Controller
             'reviewer_name' => 'nullable|string|max:255',
         ]);
 
+        // ✅ Fixed: never default to the real account name. A blank name means
+        // the reviewer wants to stay anonymous — index() displays that as
+        // "مستخدم مجهول" rather than leaking who actually wrote the review.
+        $reviewerName = trim((string) ($validated['reviewer_name'] ?? ''));
+
         $review = Review::create([
             'user_id' => $user->id,
             'course_id' => null, // Homepage review, not for specific course
             'rating' => $validated['rating'],
             'comment' => $validated['comment'],
-            'reviewer_name' => $validated['reviewer_name'] ?? $user->name,
+            'reviewer_name' => $reviewerName !== '' ? $reviewerName : null,
             'status' => 'pending', // Will be approved by admin
         ]);
 

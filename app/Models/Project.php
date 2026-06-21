@@ -15,11 +15,13 @@ class Project extends Model
         'tags',
         'category',
         'created_by',
+        'is_active',
     ];
 
     protected $casts = [
         'tags' => 'array',
         'difficulty' => 'integer',
+        'is_active' => 'boolean',
     ];
 
     public function creator(): BelongsTo

@@ -261,6 +261,33 @@ class AdminUserController extends Controller
     }
 
     /**
+     * DELETE /api/admin/users/{user}/permanent — irreversibly erase a user row.
+     * Only allowed on accounts that are already soft-deleted (forces admins to
+     * go through `destroy` first), and never on the last remaining admin.
+     * The {user} binding is resolved with trashed rows (see route definition).
+     */
+    public function destroyPermanently(Request $request, User $user)
+    {
+        $this->guardSelf($user);
+
+        if (! $user->trashed()) {
+            return response()->json(['error' => 'يجب حذف الحساب أولاً (حذف عادي) قبل الحذف النهائي.'], 400);
+        }
+
+        if ($user->role === 'admin' && User::where('role', 'admin')->count() <= 1) {
+            return response()->json(['error' => 'لا يمكن حذف آخر مدير في النظام.'], 400);
+        }
+
+        $email = $user->email;
+        $id = $user->id;
+        $user->forceDelete();
+
+        AuditLogger::log($request, 'permanently_delete_user', 'User', $id, ['email' => $email]);
+
+        return response()->json(['success' => true, 'message' => 'تم حذف المستخدم نهائياً']);
+    }
+
+    /**
      * POST /api/admin/users/{user}/restore — undo a soft-delete (mistaken deletion).
      * The {user} binding is resolved with trashed rows (see route definition).
      */

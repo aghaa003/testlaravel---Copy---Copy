@@ -15,10 +15,12 @@ class Example extends Model
         'install_command',
         'technologies',
         'created_by',
+        'is_active',
     ];
 
     protected $casts = [
         'technologies' => 'array',
+        'is_active' => 'boolean',
     ];
 
     public function creator(): BelongsTo

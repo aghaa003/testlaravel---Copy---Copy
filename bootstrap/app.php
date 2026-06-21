@@ -22,5 +22,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\RoleMiddleware::class,
         ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {})
+    ->withExceptions(function (Exceptions $exceptions): void {
+        // This is an API-only backend with no Blade login page, so there is no
+        // named "login" route to redirect to. Without this, an expired/missing
+        // session on a protected route crashes with "Route [login] not defined"
+        // instead of a clean 401 the SPA can handle.
+        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {
+            return response()->json(['error' => 'Unauthenticated', 'message' => 'يجب تسجيل الدخول للوصول إلى هذا المورد.'], 401);
+        });
+    })
     ->create();

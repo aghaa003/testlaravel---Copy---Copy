@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -70,7 +71,12 @@ class UserController extends Controller
                 $query->where('success', true);
             },
             'submissions as totalSubmissions',
-            'courses as totalCourses',
+            // ✅ Fixed: "totalCourses" on a public profile means courses this
+            // learner has completed, not courses they authored (creator_id) —
+            // the old relation always returned 0 for regular students.
+            'enrollments as totalCourses' => function ($query) {
+                $query->where('completed', true);
+            },
             'repositories as totalRepositories',
         ]);
 
@@ -167,7 +173,9 @@ class UserController extends Controller
             'submissions as solvedChallenges' => function ($query) {
                 $query->where('success', true);
             },
-            'courses as totalCourses',
+            'enrollments as totalCourses' => function ($query) {
+                $query->where('completed', true);
+            },
             'repositories as totalRepositories',
         ]);
 
@@ -263,6 +271,35 @@ class UserController extends Controller
             'totalCourses' => $user->total_courses_count ?? null,
             'totalRepositories' => $user->total_repositories_count ?? null,
         ];
+    }
+
+    /**
+     * DELETE /api/users/me — self-service account deletion.
+     * Soft-deletes the account (same mechanism as admin destroy): deleted_at is
+     * set, Auth can no longer resolve the user, and the current session is
+     * invalidated so the user is logged out immediately. Profile data,
+     * submissions, etc. are preserved (not erased) for record-keeping.
+     */
+    public function deleteSelf(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->role === 'admin' && User::where('role', 'admin')->count() <= 1) {
+            return response()->json(['error' => 'لا يمكن حذف آخر مدير في النظام.'], 400);
+        }
+
+        DB::transaction(function () use ($user) {
+            DB::table('password_reset_tokens')->where('email', $user->email)->delete();
+            $user->delete(); // soft delete (sets deleted_at)
+        });
+
+        \App\Support\AuditLogger::log($request, 'self_delete_account', 'User', $user->id, ['email' => $user->email]);
+
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json(['success' => true, 'message' => 'تم حذف حسابك بنجاح']);
     }
 
     // GET /api/check-availability?email=x&username=y

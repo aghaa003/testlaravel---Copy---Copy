@@ -12,6 +12,8 @@ class ExampleController extends Controller
     {
         $query = Example::query()->with('creator');
 
+        $this->applyActiveScope($query, $request, 'created_by');
+
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
@@ -77,5 +79,13 @@ class ExampleController extends Controller
         $example->delete();
 
         return response()->json(['message' => 'تم الحذف بنجاح']);
+    }
+
+    // POST /api/examples/{example}/toggle-active — admin/employer only
+    public function toggleActive(Request $request, Example $example)
+    {
+        $example->update(['is_active' => ! $example->is_active]);
+
+        return response()->json(['success' => true, 'is_active' => $example->is_active]);
     }
 }

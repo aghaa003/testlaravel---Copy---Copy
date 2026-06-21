@@ -39,10 +39,24 @@ class StatsController extends Controller
         $solvedChallenges = $user->submissions()->where('success', true)->count();
         $repositoriesCreated = $user->repositories()->count();
 
-        // ✅ Fixed: now uses enrollments table
         $coursesEnrolled = DB::table('enrollments')
             ->where('user_id', $user->id)
             ->count();
+
+        $coursesCompleted = DB::table('enrollments')
+            ->where('user_id', $user->id)
+            ->where('completed', true)
+            ->count();
+
+        $videoWatchedSeconds = (int) DB::table('lesson_progress')
+            ->where('user_id', $user->id)
+            ->sum('watched_seconds');
+
+        $attemptedChallenges = ChallengeSubmission::where('user_id', $user->id)
+            ->distinct('challenge_id')
+            ->count('challenge_id');
+
+        $challengesInProgress = max(0, $attemptedChallenges - $solvedChallenges);
 
         $categoriesBreakdown = ChallengeSubmission::join('challenges', 'challenge_submissions.challenge_id', '=', 'challenges.id')
             ->where('challenge_submissions.user_id', $user->id)
@@ -54,9 +68,12 @@ class StatsController extends Controller
         return response()->json([
             'userId' => $user->id,
             'solvedChallenges' => $solvedChallenges,
+            'challengesInProgress' => $challengesInProgress,
             'totalPoints' => $user->points,
             'globalRank' => \App\Models\User::where('points', '>', $user->points)->count() + 1,
             'coursesEnrolled' => $coursesEnrolled,
+            'coursesCompleted' => $coursesCompleted,
+            'videoWatchedSeconds' => $videoWatchedSeconds,
             'repositoriesCreated' => $repositoriesCreated,
             'categoriesBreakdown' => $categoriesBreakdown,
         ]);

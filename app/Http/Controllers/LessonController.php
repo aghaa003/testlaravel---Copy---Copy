@@ -6,6 +6,7 @@ use App\Models\Lesson;
 use App\Models\LessonComment;
 use App\Models\LessonLike;
 use App\Models\LessonProgress;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -56,10 +57,25 @@ class LessonController extends Controller
 
             $pct = $totalLessons > 0 ? (int) (($completedLessons / $totalLessons) * 100) : 0;
 
+            $wasCompleted = DB::table('enrollments')
+                ->where('user_id', $user->id)->where('course_id', $courseId)
+                ->value('completed');
+
             DB::table('enrollments')
                 ->where('user_id', $user->id)
                 ->where('course_id', $courseId)
                 ->update(['progress' => $pct, 'completed' => $pct >= 100]);
+
+            // Congratulate the learner the moment they first reach 100% — not on every re-save.
+            if ($pct >= 100 && ! $wasCompleted) {
+                $course = \App\Models\Course::find($courseId);
+                Notification::create([
+                    'user_id' => $user->id, 'from_user_id' => null,
+                    'from_user_name' => null, 'title' => 'تهانينا! أكملت الكورس 🎉',
+                    'type' => 'course_completed', 'entity_id' => $courseId,
+                    'entity_title' => $course?->title, 'message' => "لقد أكملت كورس \"{$course?->title}\" بنجاح!",
+                ]);
+            }
         }
 
         return response()->json(['message' => 'تم تحديث التقدم', 'progress' => $progress]);
@@ -98,6 +114,19 @@ class LessonController extends Controller
         ]);
 
         $comment->load('user');
+
+        // Notify the parent comment's author when someone replies to them.
+        if ($parentId) {
+            $parent = LessonComment::find($parentId);
+            if ($parent && $parent->user_id !== $user->id) {
+                Notification::create([
+                    'user_id' => $parent->user_id, 'from_user_id' => $user->id,
+                    'from_user_name' => $user->name, 'title' => 'رد على تعليقك',
+                    'type' => 'comment_reply', 'entity_id' => $lesson->id,
+                    'entity_title' => $lesson->title, 'message' => "{$user->name} رد على تعليقك في الدرس",
+                ]);
+            }
+        }
 
         return response()->json($this->formatComment($comment), 201);
     }

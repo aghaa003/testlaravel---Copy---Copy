@@ -91,6 +91,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::get('/users/profile', [UserController::class, 'profile']);
     Route::match(['put', 'post'], '/users/profile', [UserController::class, 'updateProfile']);
+    Route::delete('/users/me', [UserController::class, 'deleteSelf']);
 
     // Enrollment & progress (any authenticated user)
     Route::post('/courses/{course}/enroll', [EnrollmentController::class, 'enroll']);
@@ -112,6 +113,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/repositories/{repository}', [RepositoryController::class, 'update']);
     Route::delete('/repositories/{repository}', [RepositoryController::class, 'destroy']);
     Route::post('/repositories/{repository}/like', [RepositoryController::class, 'toggleLike']);
+    Route::post('/repositories/{repository}/rate', [RepositoryController::class, 'rate']);
 
     // Challenges — submit is open; update/delete are owner-or-admin via Policy
     Route::post('/challenges/{challenge}/submit', [ChallengeController::class, 'submit']);
@@ -165,10 +167,13 @@ Route::middleware('auth:sanctum')->group(function () {
         // Examples
         Route::post('/examples', [ExampleController::class, 'store']);
         Route::match(['put', 'patch'], '/examples/{example}', [ExampleController::class, 'update']);
+        Route::post('/examples/{example}/toggle-active', [ExampleController::class, 'toggleActive']);
         Route::delete('/examples/{example}', [ExampleController::class, 'destroy']);
 
         // Projects
         Route::post('/projects', [ProjectController::class, 'store']);
+        Route::match(['put', 'patch'], '/projects/{project}', [ProjectController::class, 'update']);
+        Route::post('/projects/{project}/toggle-active', [ProjectController::class, 'toggleActive']);
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
 
         // Home review moderation
@@ -190,6 +195,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/reviews', [AdminController::class, 'getReviews']);
         Route::post('/admin/reviews/{review}/approve', [AdminController::class, 'approveReview']);
         Route::post('/admin/reviews/{review}/reject', [AdminController::class, 'rejectReview']);
+
+        // Community moderation — list/delete any post, shared with employers
+        Route::get('/admin/community-posts', [CommunityController::class, 'adminGetPosts']);
+        Route::delete('/admin/community-posts/{post}', [CommunityController::class, 'deletePost']);
+
+        // Lesson/community comment moderation — shared with employers (was admin-only)
+        Route::get('/admin/comments', [AdminController::class, 'getComments']);
+        Route::delete('/admin/comments/{id}', [AdminController::class, 'deleteCommentById'])->whereNumber('id');
+        Route::delete('/admin/comments/{type}/{id}', [AdminController::class, 'deleteComment'])
+            ->where('type', 'lesson|community')->whereNumber('id');
     });
 
     // ── Admin only ─────────────────────────────────────────────────────────────
@@ -199,17 +214,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/admin/logs', [AdminController::class, 'getLogs']);
         Route::get('/admin/engagements', [AdminController::class, 'getEngagements']);
-        Route::get('/admin/comments', [AdminController::class, 'getComments']);
-        Route::delete('/admin/comments/{id}', [AdminController::class, 'deleteCommentById'])->whereNumber('id');
-        Route::delete('/admin/comments/{type}/{id}', [AdminController::class, 'deleteComment'])
-            ->where('type', 'lesson|community')->whereNumber('id');
 
         // Full user management (admin-only — employers cannot reach these)
         Route::get('/admin/users/{user}', [AdminUserController::class, 'show']);
         Route::match(['put', 'patch'], '/admin/users/{user}', [AdminUserController::class, 'updateUser']);
         Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy']);
-        // {user} resolves soft-deleted rows here so a mistaken deletion can be undone.
+        // {user} resolves soft-deleted rows here so a mistaken deletion can be undone,
+        // and so a permanent delete can target an already soft-deleted account.
         Route::post('/admin/users/{user}/restore', [AdminUserController::class, 'restore'])->withTrashed();
+        Route::delete('/admin/users/{user}/permanent', [AdminUserController::class, 'destroyPermanently'])->withTrashed();
         Route::post('/admin/users/{user}/password', [AdminUserController::class, 'setPassword']);
         Route::post('/admin/users/{user}/ban', [AdminUserController::class, 'setBan']);
         Route::post('/admin/users/{user}/disable', [AdminUserController::class, 'setDisabled']);

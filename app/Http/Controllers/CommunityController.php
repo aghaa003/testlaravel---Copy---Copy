@@ -149,13 +149,29 @@ class CommunityController extends Controller
     public function deleteComment(Request $request, CommunityPost $post, CommunityComment $comment)
     {
         $user = Auth::user();
-        if ($comment->user_id !== $user->id && $user->role !== 'admin') {
+        if ($comment->user_id !== $user->id && ! in_array($user->role, ['admin', 'employer'], true)) {
             return response()->json(['message' => 'غير مصرح'], 403);
         }
         $comment->delete();
         $post->decrement('comments_count');
 
         return response()->json(['message' => 'تم حذف التعليق']);
+    }
+
+    /** GET /api/admin/community-posts — admin/employer moderation list (search via getPosts already supports it). */
+    public function adminGetPosts(Request $request)
+    {
+        return $this->getPosts($request->merge(['limit' => $request->input('limit', 200)]));
+    }
+
+    /** DELETE /api/admin/community-posts/{post} — admin/employer can remove any post. */
+    public function deletePost(Request $request, CommunityPost $post)
+    {
+        $post->comments()->delete();
+        $post->likes()->delete();
+        $post->delete();
+
+        return response()->json(['message' => 'تم حذف المنشور']);
     }
 
     private function formatComment(CommunityComment $comment): array

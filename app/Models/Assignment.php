@@ -14,6 +14,7 @@ class Assignment extends Model
         'question',
         'description',
         'requirements',
+        'help_text',
         'difficulty',
         'language',
         'assignment_order',
