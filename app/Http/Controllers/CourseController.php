@@ -76,10 +76,14 @@ class CourseController extends Controller
             'language' => 'nullable|string',
         ]);
 
-        // ✅ Fix 9: accept both creator_id and creatorId, fallback to auth user
-        $creatorId = $request->input('creator_id')
-            ?? $request->input('creatorId')
-            ?? $user->id;
+        // Accept both creator_id and creatorId, but only admins may attribute a
+        // course to someone else (e.g. the AdminPage "assign creator" form) — a
+        // creator/employer overriding this for an arbitrary user id is a trust-
+        // boundary violation, not a legitimate use case.
+        $creatorId = $user->id;
+        if ($user->role === 'admin') {
+            $creatorId = $request->input('creator_id') ?? $request->input('creatorId') ?? $user->id;
+        }
 
         $course = Course::create([
             'title' => $validated['title'],

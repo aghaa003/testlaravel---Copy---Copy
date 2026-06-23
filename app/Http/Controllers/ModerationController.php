@@ -68,13 +68,22 @@ class ModerationController extends Controller
         } elseif ($type === 'community') {
             $query = CommunityComment::with(['user', 'post']);
         } else {
-            // Get all comments from both types
-            $lessonComments = LessonComment::with(['user', 'lesson'])->orderBy('created_at', 'desc')->get();
-            $communityComments = CommunityComment::with(['user', 'post'])->orderBy('created_at', 'desc')->get();
+            // Merge both comment types without loading every row in either table:
+            // each side only needs to supply enough of its most-recent rows to cover
+            // this page window, since the final merged-and-sorted slice can never
+            // need more than offset+limit rows from either table.
+            $window = $offset + $limit;
+            $lessonComments = LessonComment::with(['user', 'lesson'])->orderBy('created_at', 'desc')->take($window)->get();
+            $communityComments = CommunityComment::with(['user', 'post'])->orderBy('created_at', 'desc')->take($window)->get();
+
+            $merged = collect($lessonComments)->merge($communityComments)
+                ->sortByDesc('created_at')
+                ->values()
+                ->slice($offset, $limit);
 
             return response()->json([
-                'comments' => collect($lessonComments)->merge($communityComments)->slice($offset, $limit),
-                'total' => count($lessonComments) + count($communityComments),
+                'comments' => $merged,
+                'total' => LessonComment::count() + CommunityComment::count(),
             ]);
         }
 

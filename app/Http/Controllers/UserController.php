@@ -141,6 +141,16 @@ class UserController extends Controller
             'banned' => 'sometimes|boolean',
         ]);
 
+        // Same safety rails as AdminUserController::setRole/setBan — an admin must
+        // not be able to lock the platform out of admin access via this legacy route.
+        if (array_key_exists('role', $validated) || array_key_exists('banned', $validated)) {
+            abort_if($user->id === auth()->id(), 400, 'لا يمكنك تطبيق هذا الإجراء على حسابك الخاص.');
+        }
+        if (array_key_exists('role', $validated) && $user->role === 'admin' && $validated['role'] !== 'admin'
+            && User::where('role', 'admin')->count() <= 1) {
+            return response()->json(['error' => 'لا يمكن إزالة آخر مدير في النظام.'], 400);
+        }
+
         $user->update($validated);
 
         return response()->json($user);

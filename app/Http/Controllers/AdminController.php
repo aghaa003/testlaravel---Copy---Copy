@@ -114,15 +114,20 @@ class AdminController extends Controller
             ]);
         }
 
+        // Each side must supply enough of its most-recent rows to cover this page
+        // window (offset+limit), not just $limit — otherwise page 2+ of the merged
+        // pagination can come back short even when more rows actually exist.
+        $window = $offset + $limit;
+
         $lessonItems = LessonComment::with(['user', 'lesson.course'])
             ->orderByDesc('created_at')
-            ->limit($limit)
+            ->limit($window)
             ->get()
             ->map(fn ($c) => $this->formatLessonComment($c));
 
         $communityItems = CommunityComment::with(['user', 'post'])
             ->orderByDesc('created_at')
-            ->limit($limit)
+            ->limit($window)
             ->get()
             ->map(fn ($c) => $this->formatCommunityComment($c));
 
@@ -238,6 +243,10 @@ class AdminController extends Controller
     {
         return [
             'id' => (string) $c->id,
+            // lesson and community comments have independent auto-increment ids,
+            // so they collide across the merged list — "type" disambiguates which
+            // table a given id belongs to for both React keys and deletion.
+            'type' => 'lesson',
             'userName' => $c->user?->name ?? 'User',
             'lessonTitle' => $c->lesson?->title ?? 'درس',
             'courseTitle' => $c->lesson?->course?->title ?? 'كورس',
@@ -251,6 +260,7 @@ class AdminController extends Controller
     {
         return [
             'id' => (string) $c->id,
+            'type' => 'community',
             'userName' => $c->user?->name ?? 'User',
             'lessonTitle' => $c->post?->title ?? 'مشاركة',
             'courseTitle' => 'مجتمع',

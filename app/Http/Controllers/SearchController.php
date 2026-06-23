@@ -32,15 +32,19 @@ class SearchController extends Controller
         // 1. البحث في الدورات
         if ($type === 'all' || $type === 'courses') {
             $results['courses'] = Course::with('creator')
-                ->where('title', 'LIKE', "%{$query}%")
-                ->orWhere('description', 'LIKE', "%{$query}%")
+                ->where(function ($q) use ($query) {
+                    $q->where('title', 'LIKE', "%{$query}%")
+                        ->orWhere('description', 'LIKE', "%{$query}%");
+                })
                 ->take(10)->get();
         }
 
         // 2. البحث في التحديات البرمجية
         if ($type === 'all' || $type === 'challenges') {
-            $results['challenges'] = Challenge::where('title', 'LIKE', "%{$query}%")
-                ->orWhere('description', 'LIKE', "%{$query}%")
+            $results['challenges'] = Challenge::where(function ($q) use ($query) {
+                $q->where('title', 'LIKE', "%{$query}%")
+                    ->orWhere('description', 'LIKE', "%{$query}%");
+            })
                 ->take(10)->get();
         }
 
@@ -56,8 +60,10 @@ class SearchController extends Controller
 
         // 4. البحث في المستخدمين
         if ($type === 'all' || $type === 'users') {
-            $results['users'] = User::where('name', 'LIKE', "%{$query}%")
-                ->orWhere('username', 'LIKE', "%{$query}%")
+            $results['users'] = User::where(function ($q) use ($query) {
+                $q->where('name', 'LIKE', "%{$query}%")
+                    ->orWhere('username', 'LIKE', "%{$query}%");
+            })
                 ->take(10)->get();
         }
 
