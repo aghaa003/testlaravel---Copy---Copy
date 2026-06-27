@@ -55,6 +55,7 @@ class CourseController extends Controller
             'totalReviews' => $course->total_reviews,
             'totalLessons' => $course->total_lessons,
             'totalEnrollments' => $course->total_enrollments,
+            'isActive' => $course->is_active,
             'createdAt' => $course->created_at?->toJSON(),
         ];
     }

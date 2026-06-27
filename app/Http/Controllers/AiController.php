@@ -51,7 +51,9 @@ class AiController extends Controller
         $code = $this->resolveCode($validated, $reviewer);
 
         if ($mode === 'verify') {
-            return response()->json($reviewer->review($code, $language, $problem, 'challenge'));
+            // Include the resolved code (e.g. OCR'd from an uploaded image) so the
+            // frontend can persist the actual transcribed solution, not a blank one.
+            return response()->json([...$reviewer->review($code, $language, $problem, 'challenge'), 'resolvedCode' => $code]);
         }
 
         if ($mode === 'fix' || $mode === 'solution') {
@@ -98,7 +100,9 @@ class AiController extends Controller
         $mode = $validated['mode'] ?? ($code !== '' ? 'verify' : 'hint');
 
         if ($mode === 'verify') {
-            return response()->json($reviewer->review($code, $language, $problem, 'project'));
+            // Include the resolved code (e.g. OCR'd from an uploaded image) so the
+            // frontend can persist the actual transcribed solution, not a blank one.
+            return response()->json([...$reviewer->review($code, $language, $problem, 'project'), 'resolvedCode' => $code]);
         }
 
         if ($mode === 'fix') {
